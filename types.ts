@@ -1,4 +1,5 @@
 
+
 export interface CharacterParams {
   headWidth: number;
   headHeight: number;
@@ -15,9 +16,13 @@ export interface CharacterParams {
   lowerEyelidCoverage: number; // % of eye height, for the bottom lid
   eyeStyle: 'realistic' | 'blocky';
   eyeTracking: boolean;
+  eyelashes: boolean;
+  eyelashCount: number;
+  eyelashLength: number;
+  eyelashAngle: number;
   mouthWidthRatio: number;   // % of head width
   mouthYOffsetRatio: number; // % of head height/2 from center
-  mouthIsFlipped: boolean;
+  mouthBend: number;
   eyebrowWidthRatio: number; // % of head width
   eyebrowHeightRatio: number;// % of eye size
   eyebrowYOffsetRatio: number;// % of head height from eye line
@@ -31,7 +36,7 @@ export interface CharacterParams {
   torsoCornerRadius: number;
   pelvisHeight: number;
   pelvisWidthRatio: number; // % of torso width
-  pelvisShape: 'rectangle' | 'inverted-triangle' | 'horizontal-oval';
+  pelvisShape: 'rectangle' | 'horizontal-oval' | 'ghost';
   armLength: number;
   lArmWidth: number;
   rArmWidth: number;
@@ -50,12 +55,25 @@ export interface CharacterParams {
   rLegAngle: number;
   lLegBend: number;
   rLegBend: number;
+  hair: boolean;
+  backHairWidthRatio: number;
+  backHairHeightRatio: number;
+  fringeHeightRatio: number;
   bodyColor: string;
   irisColor: string;
   outlineColor: string;
   pupilColor: string;
+  hairColor: string;
   bodyOutlines: boolean;
   eyeOutlines: boolean;
+}
+
+export interface CharacterInstance {
+  params: CharacterParams;
+  x: number;
+  y: number;
+  scale: number;
+  zIndex: number;
 }
 
 export interface ParamConfig {
@@ -71,6 +89,6 @@ export interface BackgroundOptions {
   animation: boolean;
 }
 
-export type CharacterParamKey = keyof Omit<CharacterParams, 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor'>;
+export type CharacterParamKey = keyof Omit<CharacterParams, 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor' | 'hairColor'>;
 
-export type ColorParamKey = keyof Pick<CharacterParams, 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor'>;
+export type ColorParamKey = keyof Pick<CharacterParams, 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor' | 'hairColor'>;

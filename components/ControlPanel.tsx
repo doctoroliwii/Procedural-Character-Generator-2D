@@ -1,70 +1,51 @@
-import React, { useState, useCallback } from 'react';
+
+import React from 'react';
 import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions } from '../types';
 import { PARAM_CONFIGS } from '../constants';
 import Slider from './Slider';
-import MenuBar from './MenuBar';
 import ControlModule from './ControlModule';
-import { RefreshIcon } from './icons';
 
 interface ControlPanelProps {
+  panels: Record<PanelKey, PanelState>;
   params: CharacterParams;
   onParamChange: (param: CharacterParamKey | ColorParamKey, value: number | boolean | string) => void;
-  onRandomize: () => void;
   backgroundOptions: BackgroundOptions;
   onBackgroundOptionsChange: (options: Partial<BackgroundOptions>) => void;
   limbSymmetry: boolean;
   onLimbSymmetryChange: (enabled: boolean) => void;
+  maxMouthBend: number;
+  maxFringeHeightRatio: number;
+  showBoundingBoxes: boolean;
+  onShowBoundingBoxesChange: (enabled: boolean) => void;
+  togglePanel: (key: PanelKey) => void;
+  updatePanelPosition: (key: PanelKey, position: { x: number; y: number }) => void;
+  bringToFront: (key: PanelKey) => void;
 }
 
-export type PanelKey = 'Head' | 'Eyes' | 'Eyebrows' | 'Mouth' | 'Body' | 'Limbs' | 'Color' | 'Options' | 'About';
+export type PanelKey = 'Head' | 'Hair' | 'Eyes' | 'Eyebrows' | 'Mouth' | 'Body' | 'Arms' | 'Legs' | 'Color' | 'Options' | 'About';
 
-interface PanelState {
+export interface PanelState {
   isOpen: boolean;
   position: { x: number; y: number };
   zIndex: number;
 }
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRandomize, backgroundOptions, onBackgroundOptionsChange, limbSymmetry, onLimbSymmetryChange }) => {
-  const [panels, setPanels] = useState<Record<PanelKey, PanelState>>({
-    Head: { isOpen: true, position: { x: 20, y: 20 }, zIndex: 10 },
-    Eyes: { isOpen: false, position: { x: 30, y: 30 }, zIndex: 1 },
-    Eyebrows: { isOpen: false, position: { x: 40, y: 40 }, zIndex: 1 },
-    Mouth: { isOpen: false, position: { x: 50, y: 50 }, zIndex: 1 },
-    Body: { isOpen: false, position: { x: 60, y: 60 }, zIndex: 1 },
-    Limbs: { isOpen: true, position: { x: 20, y: 220 }, zIndex: 9 },
-    Color: { isOpen: true, position: { x: 230, y: 80 }, zIndex: 8 },
-    Options: { isOpen: false, position: { x: 80, y: 80 }, zIndex: 1 },
-    About: { isOpen: false, position: { x: 90, y: 90 }, zIndex: 1 },
-  });
-
-  const bringToFront = (key: PanelKey) => {
-    setPanels(prev => {
-      const maxZ = Math.max(...Object.values(prev).map((p: PanelState) => p.zIndex));
-      if (prev[key].zIndex === maxZ) return prev;
-      return {
-        ...prev,
-        [key]: { ...prev[key], zIndex: maxZ + 1 },
-      };
-    });
-  };
-
-  const togglePanel = useCallback((key: PanelKey) => {
-    setPanels(prev => ({
-      ...prev,
-      [key]: { ...prev[key], isOpen: !prev[key].isOpen },
-    }));
-    if (!panels[key].isOpen) {
-      bringToFront(key);
-    }
-  }, [panels]);
-
-  const updatePanelPosition = useCallback((key: PanelKey, position: { x: number; y: number }) => {
-    setPanels(prev => ({
-      ...prev,
-      [key]: { ...prev[key], position },
-    }));
-  }, []);
-  
+const ControlPanel: React.FC<ControlPanelProps> = ({ 
+  panels, 
+  params, 
+  onParamChange, 
+  backgroundOptions, 
+  onBackgroundOptionsChange, 
+  limbSymmetry, 
+  onLimbSymmetryChange, 
+  maxMouthBend, 
+  maxFringeHeightRatio,
+  showBoundingBoxes,
+  onShowBoundingBoxesChange,
+  togglePanel,
+  updatePanelPosition,
+  bringToFront
+}) => {
   const ColorInput = ({ label, value, onChange }: { label: string, value: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => (
     <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100">
         <label className="font-medium text-gray-700 select-none">{label}</label>
@@ -104,6 +85,25 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRa
         </div>
       </div>
     ),
+    Hair: (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100">
+          <label htmlFor="hair" className="font-medium text-gray-700 select-none">Enable Hair</label>
+          <input type="checkbox" id="hair" checked={params.hair} onChange={e => onParamChange('hair', e.target.checked)} className="h-5 w-5 rounded-md border-gray-300 text-sky-500 focus:ring-sky-400 cursor-pointer" />
+        </div>
+        {params.hair && (
+            <div className="pt-4 border-t border-gray-300 space-y-4">
+                 {['backHairWidthRatio', 'backHairHeightRatio'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
+                 <Slider 
+                    {...PARAM_CONFIGS.fringeHeightRatio} 
+                    max={Math.floor(maxFringeHeightRatio)}
+                    value={params.fringeHeightRatio}
+                    onChange={(e) => onParamChange('fringeHeightRatio', Number(e.target.value))}
+                 />
+            </div>
+        )}
+      </div>
+    ),
     Eyes: (
        <div className="space-y-4">
         {['eyeSizeRatio', 'eyeSpacingRatio', 'pupilSizeRatio', 'upperEyelidCoverage', 'lowerEyelidCoverage'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
@@ -127,6 +127,17 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRa
           </div>
           <ColorInput label="Iris Color" value={params.irisColor} onChange={e => onParamChange('irisColor', e.target.value)} />
         </div>
+         <div className="pt-4 border-t border-gray-300 space-y-3">
+            <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100">
+              <label htmlFor="eyelashes" className="font-medium text-gray-700 select-none">Eyelashes</label>
+              <input type="checkbox" id="eyelashes" checked={params.eyelashes} onChange={e => onParamChange('eyelashes', e.target.checked)} className="h-5 w-5 rounded-md border-gray-300 text-sky-500 focus:ring-sky-400 cursor-pointer" />
+            </div>
+            {params.eyelashes && (
+                <div className="pl-2 border-l-2 border-sky-200 space-y-4">
+                     {['eyelashCount', 'eyelashLength', 'eyelashAngle'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
+                </div>
+            )}
+        </div>
       </div>
     ),
     Eyebrows: (
@@ -137,10 +148,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRa
     Mouth: (
        <div className="space-y-4">
         {['mouthWidthRatio', 'mouthYOffsetRatio'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
-        <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100">
-          <label htmlFor="mouthIsFlipped" className="font-medium text-gray-700 select-none">Flip Mouth</label>
-          <input type="checkbox" id="mouthIsFlipped" checked={params.mouthIsFlipped} onChange={e => onParamChange('mouthIsFlipped', e.target.checked)} className="h-5 w-5 rounded-md border-gray-300 text-sky-500 focus:ring-sky-400 cursor-pointer" />
-        </div>
+        <Slider 
+          {...PARAM_CONFIGS.mouthBend}
+          min={-Math.round(maxMouthBend)}
+          max={Math.round(maxMouthBend)}
+          value={params.mouthBend}
+          onChange={(e) => onParamChange('mouthBend', Number(e.target.value))}
+        />
       </div>
     ),
     Body: (
@@ -156,13 +170,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRa
           )}
         </div>
         <div className="pt-4 border-t border-gray-300 space-y-3">
-          <ShapeSelector label="Pelvis Shape" value={params.pelvisShape} options={['rectangle', 'inverted-triangle', 'horizontal-oval']} onChange={(v) => onParamChange('pelvisShape', v)} />
+          <ShapeSelector label="Pelvis Shape" value={params.pelvisShape} options={['rectangle', 'horizontal-oval', 'ghost']} onChange={(v) => onParamChange('pelvisShape', v)} />
         </div>
       </div>
     ),
-    Limbs: (
+    Arms: (
       <div className="space-y-4">
-        {['armLength', 'legLength'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
+        <Slider {...PARAM_CONFIGS['armLength']} value={params['armLength']} onChange={(e) => onParamChange('armLength', Number(e.target.value))} />
         <div className="pt-4 border-t border-gray-300 space-y-3">
             <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100">
               <label htmlFor="limbSymmetry" className="font-medium text-gray-700 select-none">Symmetry</label>
@@ -172,14 +186,26 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRa
         <div className="pt-4 border-t border-gray-300 space-y-4">
            {['lArmWidth', 'rArmWidth', 'lHandSize', 'rHandSize', 'lArmAngle', 'lArmBend', 'rArmAngle', 'rArmBend'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
         </div>
-        <div className="pt-4 border-t border-gray-300 space-y-4">
-           {['lLegWidth', 'rLegWidth', 'lFootSize', 'rFootSize', 'lLegAngle', 'lLegBend', 'rLegAngle', 'rLegBend'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
-        </div>
+      </div>
+    ),
+    Legs: (
+       <div className="space-y-4">
+        {params.pelvisShape !== 'ghost' ? (
+          <>
+            <Slider {...PARAM_CONFIGS['legLength']} value={params['legLength']} onChange={(e) => onParamChange('legLength', Number(e.target.value))} />
+            <div className="pt-4 border-t border-gray-300 space-y-4">
+              {['lLegWidth', 'rLegWidth', 'lFootSize', 'rFootSize', 'lLegAngle', 'lLegBend', 'rLegAngle', 'rLegBend'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-gray-500 text-center italic select-none">No legs for ghost characters!</p>
+        )}
       </div>
     ),
     Color: (
        <div className="space-y-3">
           <ColorInput label="Body" value={params.bodyColor} onChange={e => onParamChange('bodyColor', e.target.value)} />
+          <ColorInput label="Hair" value={params.hairColor} onChange={e => onParamChange('hairColor', e.target.value)} />
           <ColorInput label="Outline" value={params.outlineColor} onChange={e => onParamChange('outlineColor', e.target.value)} />
           <ColorInput label="Pupil" value={params.pupilColor} onChange={e => onParamChange('pupilColor', e.target.value)} />
         </div>
@@ -197,6 +223,10 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRa
         <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100">
           <label htmlFor="eyeOutlines" className="font-medium text-gray-700 select-none">Eye Outlines</label>
           <input type="checkbox" id="eyeOutlines" checked={params.eyeOutlines} onChange={e => onParamChange('eyeOutlines', e.target.checked)} className="h-5 w-5 rounded-md border-gray-300 text-sky-500 focus:ring-sky-400 cursor-pointer" />
+        </div>
+        <div className="flex items-center justify-between p-2 rounded-lg bg-gray-100">
+          <label htmlFor="showBoundingBoxes" className="font-medium text-gray-700 select-none">Bounding Boxes</label>
+          <input type="checkbox" id="showBoundingBoxes" checked={showBoundingBoxes} onChange={e => onShowBoundingBoxesChange(e.target.checked)} className="h-5 w-5 rounded-md border-gray-300 text-sky-500 focus:ring-sky-400 cursor-pointer" />
         </div>
         <div className="pt-3 mt-3 border-t border-gray-300">
           <h3 className="font-semibold text-gray-800 mb-2 select-none">Background</h3>
@@ -228,28 +258,25 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChange, onRa
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-200">
-      <MenuBar onRandomize={onRandomize} onMenuItemClick={togglePanel} />
-      <div className="relative flex-1 w-full h-full overflow-hidden">
-        {(Object.keys(panels) as PanelKey[]).map((key) => {
-          const panelState = panels[key];
-          return (
-            panelState.isOpen && (
-              <ControlModule
-                key={key}
-                title={key}
-                initialPosition={panelState.position}
-                zIndex={panelState.zIndex}
-                onClose={() => togglePanel(key)}
-                onPositionChange={(pos) => updatePanelPosition(key, pos)}
-                onFocus={() => bringToFront(key)}
-              >
-                {panelContent[key]}
-              </ControlModule>
-            )
-          );
-        })}
-      </div>
+    <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
+      {(Object.keys(panels) as PanelKey[]).map((key) => {
+        const panelState = panels[key];
+        return (
+          panelState.isOpen && (
+            <ControlModule
+              key={key}
+              title={key}
+              initialPosition={panelState.position}
+              zIndex={panelState.zIndex}
+              onClose={() => togglePanel(key)}
+              onPositionChange={(pos) => updatePanelPosition(key, pos)}
+              onFocus={() => bringToFront(key)}
+            >
+              {panelContent[key]}
+            </ControlModule>
+          )
+        );
+      })}
     </div>
   );
 };

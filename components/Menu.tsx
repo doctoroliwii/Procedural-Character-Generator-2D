@@ -16,7 +16,7 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (menuRef.current && event.target instanceof Node && !menuRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     };
@@ -36,7 +36,7 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={(e) => {
             // Check if the mouse is moving to the dropdown before closing
-            if (e.relatedTarget && menuRef.current?.contains(e.relatedTarget as Node)) {
+            if (e.relatedTarget instanceof Node && menuRef.current?.contains(e.relatedTarget)) {
                 return;
             }
             setIsOpen(false);

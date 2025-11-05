@@ -12,40 +12,59 @@ interface ControlModuleProps {
 }
 
 const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialPosition, zIndex, onClose, onPositionChange, onFocus }) => {
-  const [position, setPosition] = useState(initialPosition);
-  const dragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const positionRef = useRef(initialPosition);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
   const nodeRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!nodeRef.current) return;
-    onFocus();
-    const rect = nodeRef.current.getBoundingClientRect();
-    dragRef.current = {
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
+  // Use a ref to store the latest onPositionChange callback
+  // This prevents the mouseup handler from having a stale closure over it
+  const onPositionChangeRef = useRef(onPositionChange);
+  useEffect(() => {
+    onPositionChangeRef.current = onPositionChange;
+  }, [onPositionChange]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!nodeRef.current || !nodeRef.current.parentElement) return;
+
+    const parentRect = nodeRef.current.parentElement.getBoundingClientRect();
+    const newPos = {
+      x: e.clientX - parentRect.left - dragOffsetRef.current.x,
+      y: e.clientY - parentRect.top - dragOffsetRef.current.y,
     };
+    
+    positionRef.current = newPos;
+    nodeRef.current.style.transform = `translate(${newPos.x}px, ${newPos.y}px)`;
+  }, []);
+  
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    onPositionChangeRef.current(positionRef.current);
+    
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  }, [handleMouseMove]);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Prevent dragging when clicking on form elements inside the panel
+    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, label')) {
+        return;
+    }
+    
+    setIsDragging(true);
+    onFocus();
+
+    const rect = nodeRef.current!.getBoundingClientRect();
+    const parentRect = nodeRef.current!.parentElement!.getBoundingClientRect();
+
+    dragOffsetRef.current = {
+      x: e.clientX - rect.left + parentRect.left,
+      y: e.clientY - rect.top + parentRect.top,
+    };
+    
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
-  
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragRef.current || !nodeRef.current?.parentElement) return;
-    const parentRect = nodeRef.current.parentElement.getBoundingClientRect();
-    const newPos = {
-      x: e.clientX - parentRect.left - dragRef.current.offsetX,
-      y: e.clientY - parentRect.top - dragRef.current.offsetY,
-    };
-    setPosition(newPos);
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    if (dragRef.current) {
-        onPositionChange(position);
-    }
-    dragRef.current = null;
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-  }, [position, onPositionChange, handleMouseMove]);
   
   useEffect(() => {
     // Cleanup event listeners on unmount
@@ -55,15 +74,21 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
     };
   }, [handleMouseMove, handleMouseUp]);
 
+  // Set initial position using transform
+  useEffect(() => {
+    if (nodeRef.current && !isDragging) {
+        positionRef.current = initialPosition;
+        nodeRef.current.style.transform = `translate(${initialPosition.x}px, ${initialPosition.y}px)`;
+    }
+  }, [initialPosition]);
+
   return (
     <div
       ref={nodeRef}
-      className="absolute bg-gray-50/90 backdrop-blur-sm border border-gray-300 rounded-lg shadow-2xl flex flex-col w-56"
+      className="absolute top-0 left-0 bg-gray-50/90 backdrop-blur-sm border border-gray-300 rounded-lg shadow-2xl flex flex-col w-56 pointer-events-auto"
       style={{
-        left: `${position.x}px`,
-        top: `${position.y}px`,
         zIndex: zIndex,
-        cursor: dragRef.current ? 'grabbing' : 'default',
+        cursor: isDragging ? 'grabbing' : 'default',
       }}
       onMouseDown={onFocus}
     >
