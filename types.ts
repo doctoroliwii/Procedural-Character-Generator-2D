@@ -36,7 +36,7 @@ export interface CharacterParams {
   torsoCornerRadius: number;
   pelvisHeight: number;
   pelvisWidthRatio: number; // % of torso width
-  pelvisShape: 'rectangle' | 'horizontal-oval' | 'ghost';
+  pelvisShape: 'rectangle' | 'horizontal-oval';
   armLength: number;
   lArmWidth: number;
   rArmWidth: number;

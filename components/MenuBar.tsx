@@ -1,3 +1,4 @@
+
 import React from 'react';
 import Menu from './Menu';
 import { PanelKey } from './ControlPanel';
@@ -26,6 +27,9 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onMenu
     { label: 'Legs', action: () => onMenuItemClick('Legs') },
     { label: 'Color', action: () => onMenuItemClick('Color') },
   ];
+  const groupItems = [
+    { label: 'Group Settings', action: () => onMenuItemClick('GroupSettings') }
+  ];
   const viewItems = [{ label: 'Options', action: () => onMenuItemClick('Options') }];
   const helpItems = [{ label: 'About', action: () => onMenuItemClick('About') }];
 
@@ -35,6 +39,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onMenu
       <Menu title="File" items={fileItems} />
       <Menu title="Head" items={headItems} />
       <Menu title="Body" items={bodyItems} />
+      <Menu title="Group" items={groupItems} />
       <Menu title="View" items={viewItems} />
       <Menu title="Help" items={helpItems} />
     </header>

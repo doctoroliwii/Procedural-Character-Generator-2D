@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import type { CharacterParams, BackgroundOptions, CharacterInstance } from '../types';
 
@@ -235,18 +236,46 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, backgroun
         const centerX = VIEWBOX_WIDTH / 2;
         const headY = 120;
         const actualHeadTopY = (() => { switch (headShape) { case 'circle': case 'square': return headY - headWidth / 2; default: return headY - headHeight / 2; } })();
-        const calculatedEyeSize = headHeight * (eyeSizeRatio / 100); const calculatedEyeSpacing = headWidth * (eyeSpacingRatio / 100); const calculatedPupilSize = calculatedEyeSize * (pupilSizeRatio / 100); const calculatedMouthWidth = headWidth * (mouthWidthRatio / 100); const calculatedMouthYOffset = (headHeight / 2) * (mouthYOffsetRatio / 100); const calculatedEyebrowWidth = headWidth * (eyebrowWidthRatio / 100); const calculatedEyebrowHeight = calculatedEyeSize * (eyebrowHeightRatio / 100); const calculatedEyebrowYOffset = headHeight * (eyebrowYOffsetRatio / 100); const calculatedNeckWidth = headWidth * (neckWidthRatio / 100); const calculatedPelvisWidth = torsoWidth * (pelvisWidthRatio / 100);
+        const calculatedEyeSize = headHeight * (eyeSizeRatio / 100); const calculatedEyeSpacing = headWidth * (eyeSpacingRatio / 100); const calculatedPupilSize = calculatedEyeSize * (pupilSizeRatio / 100); const calculatedMouthWidth = headWidth * (mouthWidthRatio / 100); const calculatedMouthYOffset = (headHeight / 2) * (mouthYOffsetRatio / 100); const calculatedEyebrowWidth = headWidth * (eyebrowWidthRatio / 100); const calculatedEyebrowHeight = calculatedEyeSize * (eyebrowHeightRatio / 100); const calculatedEyebrowYOffset = headHeight * (eyebrowYOffsetRatio / 100); const calculatedNeckWidth = headWidth * (neckWidthRatio / 100); let adjustedPelvisWidth = torsoWidth * (pelvisWidthRatio / 100);
         const headBottomY = headY + (headShape === 'circle' || headShape === 'square' ? headWidth / 2 : headHeight / 2); const neckY = headBottomY - 15; const torsoTopY = neckY + neckHeight;
         const getTorsoWidthAtY = (y: number) => { const yRel = y - torsoTopY; if (yRel < 0 || yRel > torsoHeight) return 0; switch (torsoShape) { case 'circle': { const rx = torsoWidth / 2; const ry = torsoHeight / 2; if (ry === 0) return torsoWidth; const centerY = torsoTopY + ry; const yDistFromCenter = Math.abs(y - centerY); if (yDistFromCenter > ry) return 0; return 2 * rx * Math.sqrt(1 - (yDistFromCenter / ry) ** 2); } case 'triangle': return torsoHeight > 0 ? torsoWidth * (yRel / torsoHeight) : 0; case 'inverted-triangle': return torsoHeight > 0 ? torsoWidth * (1 - yRel / torsoHeight) : torsoWidth; case 'rectangle': case 'square': { const r = torsoShape === 'square' ? Math.min(torsoCornerRadius, torsoWidth / 2) : Math.min(torsoCornerRadius, torsoWidth / 2, torsoHeight / 2); const w_half = torsoWidth / 2; const h = torsoHeight; let boundaryX_half; if (yRel < r) { const y_arc_relative_to_center = yRel - r; const x_offset_from_corner_center = Math.sqrt(Math.max(0, r*r - y_arc_relative_to_center*y_arc_relative_to_center)); boundaryX_half = (w_half - r) + x_offset_from_corner_center; } else if (yRel > h - r) { const y_arc_relative_to_center = yRel - (h - r); const x_offset_from_corner_center = Math.sqrt(Math.max(0, r*r - y_arc_relative_to_center*y_arc_relative_to_center)); boundaryX_half = (w_half - r) + x_offset_from_corner_center; } else { boundaryX_half = w_half; } return boundaryX_half * 2; } default: return torsoWidth; } };
         let finalNeckWidth = calculatedNeckWidth; let neckConnectionY = torsoTopY;
         if (torsoShape === 'triangle' || torsoShape === 'circle') { const maxConnectionDepth = torsoHeight * 0.3; let foundConnection = false; for (let depth = 0; depth <= maxConnectionDepth; depth++) { const currentY = torsoTopY + depth; const widthAtY = getTorsoWidthAtY(currentY); if (widthAtY >= calculatedNeckWidth) { neckConnectionY = currentY; finalNeckWidth = calculatedNeckWidth; foundConnection = true; break; } } if (!foundConnection) { neckConnectionY = torsoTopY + maxConnectionDepth; finalNeckWidth = getTorsoWidthAtY(neckConnectionY); } } else { neckConnectionY = torsoTopY; finalNeckWidth = Math.min(calculatedNeckWidth, getTorsoWidthAtY(neckConnectionY)); }
-        const searchStartY = torsoTopY + torsoHeight; const searchEndY = torsoTopY + torsoHeight * 0.4; let junctionY = searchStartY; for (let y = searchStartY; y >= searchEndY; y -= 2) { if (getTorsoWidthAtY(y) >= calculatedPelvisWidth) { junctionY = y; } else { break; } }
-        const pelvisOverlap = 5; const pelvisY = junctionY - pelvisOverlap;
-        const minPelvisWidthForLegSeparation = (lLegWidth + rLegWidth) * 0.75; let adjustedPelvisWidth = Math.max(calculatedPelvisWidth, minPelvisWidthForLegSeparation); const torsoWidthAtJunction = getTorsoWidthAtY(junctionY); adjustedPelvisWidth = Math.min(adjustedPelvisWidth, torsoWidthAtJunction * 1.2);
-        const pelvisBottomY = pelvisY + pelvisHeight; const legY = pelvisBottomY - pelvisHeight * 0.3; const legRadius = Math.max(lLegWidth, rLegWidth) / 2; const finalLegY = Math.max(legY, (torsoTopY + torsoHeight) + legRadius + 4);
+        
+        const torsoBottomY = torsoTopY + torsoHeight;
+        let junctionY;
+        if (torsoShape === 'inverted-triangle') {
+            junctionY = torsoBottomY;
+        } else {
+            const searchStartY = torsoBottomY;
+            const searchEndY = torsoTopY + torsoHeight * 0.4;
+            junctionY = searchStartY;
+            for (let y = searchStartY; y >= searchEndY; y -= 2) {
+                if (getTorsoWidthAtY(y) >= adjustedPelvisWidth) {
+                    junctionY = y;
+                    break;
+                }
+            }
+        }
+        const torsoWidthAtJunction = getTorsoWidthAtY(junctionY);
+        if (torsoShape !== 'inverted-triangle') {
+           adjustedPelvisWidth = Math.min(adjustedPelvisWidth, torsoWidthAtJunction * 1.2);
+        }
+        const pelvisOverlap = torsoShape === 'inverted-triangle' ? pelvisHeight * 0.4 : 5;
+        const pelvisY = junctionY - pelvisOverlap;
+        const legY = pelvisY + pelvisHeight * 0.8;
+        const finalLegY = legY;
+
         const getShoulderAttachment = () => { const avgArmWidth = (lArmWidth + rArmWidth) / 2; const insetAmount = avgArmWidth / 2; let shoulderY: number; let xOffset: number; switch (torsoShape) { case 'circle': { const rx = torsoWidth / 2; const ry = torsoHeight / 2; const torsoCenterY = torsoTopY + ry; const yRatio = 0.2; const initialShoulderY = torsoCenterY - ry * yRatio; const yDistFromCenter = initialShoulderY - torsoCenterY; if (ry < 1e-6 || rx < 1e-6) { shoulderY = torsoCenterY; xOffset = 0; break; } const edgeXOffset = rx * Math.sqrt(Math.max(0, 1 - (yDistFromCenter / ry) ** 2)); const normalX = edgeXOffset / (rx ** 2); const normalY = yDistFromCenter / (ry ** 2); const mag = Math.sqrt(normalX**2 + normalY**2); if (mag < 1e-6) { shoulderY = initialShoulderY; xOffset = edgeXOffset - insetAmount; break; } const normalizedNormalX = normalX / mag; const normalizedNormalY = normalY / mag; const insetX = insetAmount * normalizedNormalX; const insetY = insetAmount * normalizedNormalY; xOffset = edgeXOffset - insetX; shoulderY = initialShoulderY - insetY; break; } case 'triangle': { const initialShoulderY = torsoTopY + torsoHeight * 0.3; const edgeXOffset = getTorsoWidthAtY(initialShoulderY) / 2; const edgeVec = { x: torsoWidth / 2, y: torsoHeight }; const edgeMag = Math.sqrt(edgeVec.x**2 + edgeVec.y**2); if (edgeMag < 1e-6) { shoulderY = initialShoulderY; xOffset = edgeXOffset; break; } const normalVec = { x: -edgeVec.y / edgeMag, y: edgeVec.x / edgeMag }; const insetX = insetAmount * normalVec.x; const insetY = insetAmount * normalVec.y; xOffset = edgeXOffset + insetX; shoulderY = initialShoulderY + insetY; break; } case 'inverted-triangle': { const initialShoulderY = torsoTopY + torsoHeight * 0.15; const edgeXOffset = getTorsoWidthAtY(initialShoulderY) / 2; const edgeVec = { x: -torsoWidth / 2, y: torsoHeight }; const edgeMag = Math.sqrt(edgeVec.x**2 + edgeVec.y**2); if (edgeMag < 1e-6) { shoulderY = initialShoulderY; xOffset = edgeXOffset; break; } const normalVec = { x: -edgeVec.y / edgeMag, y: edgeVec.x / edgeMag }; const insetX = insetAmount * normalVec.x; const insetY = insetAmount * normalVec.y; xOffset = edgeXOffset + insetX; shoulderY = initialShoulderY + insetY; break; } default: { const r = torsoShape === 'square' ? Math.min(torsoCornerRadius, torsoWidth / 2) : Math.min(torsoCornerRadius, torsoWidth / 2, torsoHeight / 2); if (r < insetAmount) { shoulderY = torsoTopY + insetAmount; xOffset = torsoWidth / 2 - insetAmount; break; } const cornerCenter_xOffset = torsoWidth / 2 - r; const cornerCenter_yAbsolute = torsoTopY + r; const angle = -Math.PI / 4; const boundary_xAbsolute = centerX + cornerCenter_xOffset + r * Math.cos(angle); const boundary_yAbsolute = cornerCenter_yAbsolute + r * Math.sin(angle); const normalX = Math.cos(angle); const normalY = Math.sin(angle); const attachment_xAbsolute = boundary_xAbsolute - insetAmount * normalX; const attachment_yAbsolute = boundary_yAbsolute - insetAmount * normalY; xOffset = attachment_xAbsolute - centerX; shoulderY = attachment_yAbsolute; break; } } const torsoWidthAtShoulderY = getTorsoWidthAtY(shoulderY); if (xOffset * 2 > torsoWidthAtShoulderY) { xOffset = (torsoWidthAtShoulderY / 2) - 2; } xOffset = Math.max(0, xOffset); return { y: shoulderY, xOffset }; };
+        const getHipAttachment = () => {
+            // Position hip joints at 35% from the center towards the edge of the pelvis
+            const lHipX = centerX - adjustedPelvisWidth * 0.35;
+            const rHipX = centerX + adjustedPelvisWidth * 0.35;
+            return { l: { x: lHipX, y: finalLegY }, r: { x: rHipX, y: finalLegY } };
+        };
         const { y: shoulderY, xOffset: shoulderXOffset } = getShoulderAttachment();
-        const lShoulder = { x: centerX - shoulderXOffset, y: shoulderY }; const rShoulder = { x: centerX + shoulderXOffset, y: shoulderY }; const lHip = { x: centerX - adjustedPelvisWidth / 2.5, y: finalLegY }; const rHip = { x: centerX + adjustedPelvisWidth / 2.5, y: finalLegY };
+        const { l: lHip, r: rHip } = getHipAttachment();
+        const lShoulder = { x: centerX - shoulderXOffset, y: shoulderY }; const rShoulder = { x: centerX + shoulderXOffset, y: shoulderY };
         const createLimbPath = (start: {x: number, y: number}, length: number, angle: number, bend: number, dir: -1 | 1) => { const rad = angle * Math.PI / 180; const end = { x: start.x + dir * length * Math.sin(rad), y: start.y + length * Math.cos(rad) }; const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dx = end.x - start.x; const dy = end.y - start.y; const dist = Math.sqrt(dx * dx + dy * dy); const control = { x: mid.x, y: mid.y }; if (dist > 1e-6) { const perpDx = -dy / dist; const perpDy = dx / dist; control.x = mid.x + perpDx * bend; control.y = mid.y + perpDy * bend; } const path = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`; return { path, end, control }; };
         const { path: lArmPath, end: lWrist, control: lArmControl } = createLimbPath(lShoulder, armLength, lArmAngle, lArmBend, -1); const { path: rArmPath, end: rWrist, control: rArmControl } = createLimbPath(rShoulder, armLength, rArmAngle, rArmBend, 1); const { path: lLegPath, end: lAnkle, control: lLegControl } = createLimbPath(lHip, legLength, lLegAngle, lLegBend, -1); const { path: rLegPath, end: rAnkle, control: rLegControl } = createLimbPath(rHip, legLength, rLegAngle, rLegBend, 1);
         const lFootGroundY = lAnkle.y + lLegWidth / 2; const rFootGroundY = rAnkle.y + rLegWidth / 2; const lFootHeight = Math.max(lFootSize, lLegWidth); const rFootHeight = Math.max(rFootSize, rLegWidth); const lFootWidth = Math.min(lFootSize * 2, lLegWidth * 3); const rFootWidth = Math.min(rFootSize * 2, rLegWidth * 3); const lHeelX = lAnkle.x; const lFootPath = `M ${lHeelX} ${lFootGroundY} L ${lHeelX - lFootWidth} ${lFootGroundY} A ${lFootWidth / 2} ${lFootHeight} 0 0 1 ${lHeelX} ${lFootGroundY} Z`; const rHeelX = rAnkle.x; const rFootPath = `M ${rHeelX} ${rFootGroundY} L ${rHeelX + rFootWidth} ${rFootGroundY} A ${rFootWidth / 2} ${rFootHeight} 0 0 0 ${rHeelX} ${rFootGroundY} Z`;
@@ -268,7 +297,60 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, backgroun
         const renderHead = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; switch (headShape) { case 'circle': return <circle cx={centerX} cy={headY} r={headWidth / 2} {...props} />; case 'square': return <rect x={centerX - headWidth/2} y={headY - headWidth/2} width={headWidth} height={headWidth} rx={headCornerRadius} {...props} />; case 'triangle': return <path d={createRoundedPolygonPath([headTop, headBottomLeft, headBottomRight], triangleCornerRadius)} {...props} />; case 'inverted-triangle': return <path d={createRoundedPolygonPath([headTopLeft, headTopRight, headBottom], triangleCornerRadius)} {...props} />; default: return <ellipse cx={centerX} cy={headY} rx={headWidth / 2} ry={headHeight / 2} {...props} />; } };
         const renderTorso = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; switch (torsoShape) { case 'circle': return <ellipse cx={centerX} cy={torsoCY} rx={torsoWidth / 2} ry={torsoHeight / 2} {...props} />; case 'square': return <rect x={centerX - torsoWidth/2} y={torsoTopY} width={torsoWidth} height={torsoWidth} rx={torsoCornerRadius} {...props} />; case 'triangle': return <path d={createRoundedPolygonPath([torsoTop, torsoBottomLeft, torsoBottomRight], triangleCornerRadius)} {...props} />; case 'inverted-triangle': return <path d={createRoundedPolygonPath([torsoTopLeft, torsoTopRight, torsoBottom], triangleCornerRadius)} {...props} />; default: return <rect x={centerX - torsoWidth/2} y={torsoTopY} width={torsoWidth} height={torsoHeight} rx={torsoCornerRadius} {...props} />; } };
         const renderNeck = () => { return <rect x={centerX - finalNeckWidth / 2} y={neckY} width={finalNeckWidth} height={neckConnectionY - neckY + 5} fill={bodyColor} rx={finalNeckWidth * 0.1} />; };
-        const renderPelvis = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; const junctionY = pelvisY + pelvisOverlap; const topWidth = getTorsoWidthAtY(junctionY - 1); const bottomWidth = adjustedPelvisWidth; const pelvisBottomY = junctionY + pelvisHeight; const filletSize = Math.max(0, Math.min(25, (topWidth - bottomWidth) / 2, pelvisHeight * 0.8)); let path = `M ${centerX - topWidth / 2} ${junctionY - filletSize}`; path += ` Q ${centerX - topWidth / 2} ${junctionY}, ${centerX - bottomWidth / 2} ${junctionY}`; const cr = 15; switch (pelvisShape) { case 'horizontal-oval': path += ` L ${centerX - bottomWidth / 2} ${pelvisBottomY - cr} A ${bottomWidth/2} ${cr} 0 0 0 ${centerX + bottomWidth / 2} ${pelvisBottomY - cr} L ${centerX + bottomWidth / 2} ${junctionY}`; break; case 'ghost': const height = pelvisHeight * 2.5; const ghostBottomY = junctionY + height; const ghostBottomWidth = bottomWidth * 0.6; const waveAmplitude = bottomWidth * 0.2; const midY = junctionY + height / 2; path += ` Q ${centerX - bottomWidth / 2 - waveAmplitude}, ${midY} ${centerX - ghostBottomWidth / 2}, ${ghostBottomY}`; path += ` Q ${centerX}, ${ghostBottomY + waveAmplitude * 1.5} ${centerX + ghostBottomWidth / 2}, ${ghostBottomY}`; path += ` Q ${centerX + bottomWidth / 2 + waveAmplitude}, ${midY} ${centerX + bottomWidth / 2}, ${junctionY}`; break; default: path += ` L ${centerX - bottomWidth / 2} ${pelvisBottomY - cr} Q ${centerX - bottomWidth/2} ${pelvisBottomY}, ${centerX - bottomWidth/2 + cr} ${pelvisBottomY}`; path += ` L ${centerX + bottomWidth/2 - cr} ${pelvisBottomY} Q ${centerX + bottomWidth/2} ${pelvisBottomY}, ${centerX + bottomWidth/2} ${pelvisBottomY - cr}`; path += ` L ${centerX + bottomWidth / 2} ${junctionY}`; break; } path += ` Q ${centerX + topWidth / 2} ${junctionY}, ${centerX + topWidth / 2} ${junctionY - filletSize} Z`; return <path d={path.replace(/\s+/g, ' ').trim()} {...props} />; };
+        const renderPelvis = () => {
+            const props = { fill: bodyColor, strokeLinejoin: 'round' as const };
+        
+            if (torsoShape === 'inverted-triangle') {
+                const topY = pelvisY;
+                const bottomY = topY + pelvisHeight;
+                const width = adjustedPelvisWidth;
+                const cr = 15;
+                const socketDepth = pelvisHeight * 0.5;
+        
+                let path = `M ${centerX - width / 2} ${topY + socketDepth}`;
+                path += ` Q ${centerX} ${topY}, ${centerX + width / 2} ${topY + socketDepth}`;
+        
+                switch (pelvisShape) {
+                    case 'horizontal-oval':
+                        path += ` A ${width / 2} ${(bottomY - (topY + socketDepth)) / 2} 0 1 1 ${centerX - width / 2} ${topY + socketDepth}`;
+                        break;
+                    default: // 'rectangle'
+                        path += ` L ${centerX + width / 2} ${bottomY - cr}`;
+                        path += ` Q ${centerX + width / 2} ${bottomY}, ${centerX + width / 2 - cr} ${bottomY}`;
+                        path += ` L ${centerX - width / 2 + cr} ${bottomY}`;
+                        path += ` Q ${centerX - width / 2} ${bottomY}, ${centerX - width / 2} ${bottomY - cr}`;
+                        break;
+                }
+                path += ` Z`;
+                return <path d={path.replace(/\s+/g, ' ').trim()} {...props} />;
+            }
+            
+            const junctionY = pelvisY + pelvisOverlap;
+            const topWidth = getTorsoWidthAtY(junctionY);
+            const bottomWidth = adjustedPelvisWidth;
+            const pelvisBottomY = junctionY + pelvisHeight;
+            const filletSize = Math.max(0, Math.min(25, (topWidth - bottomWidth) / 2, pelvisHeight * 0.8));
+            
+            const drawingJunctionY = junctionY - 1;
+
+            let path = `M ${centerX - topWidth / 2} ${drawingJunctionY - filletSize}`;
+            path += ` Q ${centerX - topWidth / 2} ${drawingJunctionY}, ${centerX - bottomWidth / 2} ${drawingJunctionY}`;
+            const cr = 15;
+            switch (pelvisShape) {
+                case 'horizontal-oval':
+                    path += ` L ${centerX - bottomWidth / 2} ${pelvisBottomY - cr} A ${bottomWidth/2} ${cr} 0 0 0 ${centerX + bottomWidth / 2} ${pelvisBottomY - cr} L ${centerX + bottomWidth / 2} ${drawingJunctionY}`;
+                    break;
+                default: // 'rectangle'
+                    path += ` L ${centerX - bottomWidth / 2} ${pelvisBottomY - cr}`;
+                    path += ` Q ${centerX - bottomWidth/2} ${pelvisBottomY}, ${centerX - bottomWidth/2 + cr} ${pelvisBottomY}`;
+                    path += ` L ${centerX + bottomWidth/2 - cr} ${pelvisBottomY}`;
+                    path += ` Q ${centerX + bottomWidth/2} ${pelvisBottomY}, ${centerX + bottomWidth/2} ${pelvisBottomY - cr}`;
+                    path += ` L ${centerX + bottomWidth / 2} ${drawingJunctionY}`;
+                    break;
+            }
+            path += ` Q ${centerX + topWidth / 2} ${drawingJunctionY}, ${centerX + topWidth / 2} ${drawingJunctionY - filletSize} Z`;
+            return <path d={path.replace(/\s+/g, ' ').trim()} {...props} />;
+        };
         const renderEyelashes = (eyeX: number) => { if (!eyelashes || upperEyelidCoverage >= 95) return null; const lashes: React.ReactNode[] = []; const eyeTopY = eyeYPos - eyeRy; const isLeftEye = eyeX < centerX; const angleRad = (isLeftEye ? -eyelashAngle : eyelashAngle) * Math.PI / 180; const cosA = Math.cos(angleRad); const sinA = Math.sin(angleRad); if (eyeStyle === 'blocky') { const upperLidY = eyeTopY + (2 * eyeRy * (upperEyelidCoverage / 100) * 0.5); const y_term = (upperLidY - eyeYPos) / eyeRy; const x_offset_sq = Math.max(0, 1 - y_term * y_term); const x_offset = eyeRx * Math.sqrt(x_offset_sq); const startX = eyeX - x_offset; const endX = eyeX + x_offset; const totalWidth = endX - startX; const ratio_start = isLeftEye ? 0.0 : 1.0; const ratio_end = isLeftEye ? 0.4 : 0.6; for (let i = 0; i < eyelashCount; i++) { const step = eyelashCount > 1 ? i / (eyelashCount - 1) : 0.5; const ratio = ratio_start + step * (ratio_end - ratio_start); const lashStartX = startX + totalWidth * ratio; const lashStartY = upperLidY; const outwardDirection = (eyeX < centerX) ? -1 : 1; let vx, vy; if (outwardDirection === 1) { vx = ratio; vy = -1; } else { vx = -(1 - ratio); vy = -1; } let len = Math.sqrt(vx * vx + vy * vy); if (len > 0) { vx /= len; vy /= len; } const finalVx = vx * cosA - vy * sinA; const finalVy = vx * sinA + vy * cosA; const lashEndX = lashStartX + eyelashLength * finalVx; const lashEndY = lashStartY + eyelashLength * finalVy; lashes.push(<path key={i} d={`M ${lashStartX} ${lashStartY} L ${lashEndX} ${lashEndY}`} stroke={pupilColor} strokeWidth={1.5} strokeLinecap="round" />); } } else { const leftPointX = eyeX - eyeRx; const rightPointX = eyeX + eyeRx; const verticalCenterY = eyeYPos; const upperControlY = (eyeYPos - eyeRy) + (2 * eyeRy * upperEyelidCoverage) / 100; const p0 = { x: leftPointX, y: verticalCenterY }; const p1 = { x: eyeX, y: upperControlY }; const p2 = { x: rightPointX, y: verticalCenterY }; const t_start = isLeftEye ? 0.0 : 1.0; const t_end = isLeftEye ? 0.4 : 0.6; for (let i = 0; i < eyelashCount; i++) { const step = eyelashCount > 1 ? i / (eyelashCount - 1) : 0.5; const t = t_start + step * (t_end - t_start); const startX = (1 - t)**2 * p0.x + 2 * (1 - t) * t * p1.x + t**2 * p2.x; const startY = (1 - t)**2 * p0.y + 2 * (1 - t) * t * p1.y + t**2 * p2.y; const tx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x); const ty = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y); let nx = -ty, ny = tx; let len = Math.sqrt(nx**2 + ny**2); if (len > 0) { nx /= len; ny /= len; } if (ny > 0) { nx = -nx; ny = -ny; } const outwardDirection = eyeX < centerX ? -1 : 1; nx = nx + outwardDirection * 1.2; ny = ny - 0.2; len = Math.sqrt(nx * nx + ny * ny); if (len > 0) { nx /= len; ny /= len; } const finalNx = nx * cosA - ny * sinA; const finalNy = nx * sinA + ny * cosA; const endX = startX + eyelashLength * finalNx; const endY = startY + eyelashLength * finalNy; lashes.push(<path key={i} d={`M ${startX} ${startY} L ${endX} ${endY}`} stroke={pupilColor} strokeWidth={1.5} strokeLinecap="round" />); } } return <g>{lashes}</g>; };
         
         const getLocalBBox = () => {
@@ -291,14 +373,13 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, backgroun
             addPoint({x: headRight, y: hair ? backHairCenterY + backHairRy : headBottomY});
 
             // Body
+            const pelvisBottomY = pelvisY + pelvisHeight;
             addPoint({x: centerX - torsoWidth/2, y: torsoTopY});
             addPoint({x: centerX + torsoWidth/2, y: pelvisBottomY});
             
             // Limbs
-            if (pelvisShape !== 'ghost') {
-              addPoint(lAnkle, lLegWidth / 2, lFootHeight);
-              addPoint(rAnkle, rLegWidth / 2, rFootHeight);
-            }
+            addPoint(lAnkle, lLegWidth / 2, lFootHeight);
+            addPoint(rAnkle, rLegWidth / 2, rFootHeight);
             addPoint(lWrist, lHandSize / 2, lHandSize / 2);
             addPoint(rWrist, rHandSize / 2, rHandSize / 2);
             addPoint(lArmControl, lArmWidth / 2, lArmWidth / 2);
@@ -317,7 +398,12 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, backgroun
             <g key={`char-${index}`} transform={`translate(${charInstance.x + VIEWBOX_WIDTH/2}, ${charInstance.y + VIEWBOX_HEIGHT/2}) scale(${charInstance.scale}) translate(${-VIEWBOX_WIDTH/2}, ${-VIEWBOX_HEIGHT/2})`}>
                 {hair && (<g filter={bodyOutlines ? `url(#body-outline-filter)` : 'none'}><path d={backHairPath} fill={hairColor} /></g>)}
                 <g filter={bodyOutlines ? `url(#body-outline-filter)` : 'none'}>
-                  {pelvisShape !== 'ghost' && ( <> <path d={lFootPath} fill={bodyColor} /> <path d={rFootPath} fill={bodyColor} /> <path d={lLegPath} fill="none" stroke={bodyColor} strokeWidth={lLegWidth} strokeLinecap="round" strokeLinejoin="round" /> <path d={rLegPath} fill="none" stroke={bodyColor} strokeWidth={rLegWidth} strokeLinecap="round" strokeLinejoin="round" /> </> )}
+                    <path d={lFootPath} fill={bodyColor} /> 
+                    <path d={rFootPath} fill={bodyColor} /> 
+                    <circle cx={lHip.x} cy={lHip.y} r={lLegWidth / 2 * 1.6} fill={bodyColor} />
+                    <circle cx={rHip.x} cy={rHip.y} r={rLegWidth / 2 * 1.6} fill={bodyColor} />
+                    <path d={lLegPath} fill="none" stroke={bodyColor} strokeWidth={lLegWidth} strokeLinecap="round" strokeLinejoin="round" /> 
+                    <path d={rLegPath} fill="none" stroke={bodyColor} strokeWidth={rLegWidth} strokeLinecap="round" strokeLinejoin="round" /> 
                   <path d={lArmPath} fill="none" stroke={bodyColor} strokeWidth={lArmWidth} strokeLinecap="round" strokeLinejoin="round" />
                   <path d={rArmPath} fill="none" stroke={bodyColor} strokeWidth={rArmWidth} strokeLinecap="round" strokeLinejoin="round" />
                   <circle cx={lWrist.x} cy={lWrist.y} r={lHandSize/2} fill={bodyColor} />

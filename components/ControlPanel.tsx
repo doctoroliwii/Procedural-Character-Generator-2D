@@ -17,12 +17,18 @@ interface ControlPanelProps {
   maxFringeHeightRatio: number;
   showBoundingBoxes: boolean;
   onShowBoundingBoxesChange: (enabled: boolean) => void;
+  minGroupSize: number;
+  onMinGroupSizeChange: (value: number) => void;
+  maxGroupSize: number;
+  onMaxGroupSizeChange: (value: number) => void;
+  groupXSpread: number;
+  onGroupXSpreadChange: (value: number) => void;
   togglePanel: (key: PanelKey) => void;
   updatePanelPosition: (key: PanelKey, position: { x: number; y: number }) => void;
   bringToFront: (key: PanelKey) => void;
 }
 
-export type PanelKey = 'Head' | 'Hair' | 'Eyes' | 'Eyebrows' | 'Mouth' | 'Body' | 'Arms' | 'Legs' | 'Color' | 'Options' | 'About';
+export type PanelKey = 'Head' | 'Hair' | 'Eyes' | 'Eyebrows' | 'Mouth' | 'Body' | 'Arms' | 'Legs' | 'Color' | 'GroupSettings' | 'Options' | 'About';
 
 export interface PanelState {
   isOpen: boolean;
@@ -42,6 +48,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   maxFringeHeightRatio,
   showBoundingBoxes,
   onShowBoundingBoxesChange,
+  minGroupSize,
+  onMinGroupSizeChange,
+  maxGroupSize,
+  onMaxGroupSizeChange,
+  groupXSpread,
+  onGroupXSpreadChange,
   togglePanel,
   updatePanelPosition,
   bringToFront
@@ -170,7 +182,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           )}
         </div>
         <div className="pt-4 border-t border-gray-300 space-y-3">
-          <ShapeSelector label="Pelvis Shape" value={params.pelvisShape} options={['rectangle', 'horizontal-oval', 'ghost']} onChange={(v) => onParamChange('pelvisShape', v)} />
+          <ShapeSelector label="Pelvis Shape" value={params.pelvisShape} options={['rectangle', 'horizontal-oval']} onChange={(v) => onParamChange('pelvisShape', v)} />
         </div>
       </div>
     ),
@@ -190,16 +202,10 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     ),
     Legs: (
        <div className="space-y-4">
-        {params.pelvisShape !== 'ghost' ? (
-          <>
-            <Slider {...PARAM_CONFIGS['legLength']} value={params['legLength']} onChange={(e) => onParamChange('legLength', Number(e.target.value))} />
-            <div className="pt-4 border-t border-gray-300 space-y-4">
-              {['lLegWidth', 'rLegWidth', 'lFootSize', 'rFootSize', 'lLegAngle', 'lLegBend', 'rLegAngle', 'rLegBend'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-gray-500 text-center italic select-none">No legs for ghost characters!</p>
-        )}
+        <Slider {...PARAM_CONFIGS['legLength']} value={params['legLength']} onChange={(e) => onParamChange('legLength', Number(e.target.value))} />
+        <div className="pt-4 border-t border-gray-300 space-y-4">
+            {['lLegWidth', 'rLegWidth', 'lFootSize', 'rFootSize', 'lLegAngle', 'lLegBend', 'rLegAngle', 'rLegBend'].map(k => <Slider key={k} {...PARAM_CONFIGS[k as CharacterParamKey]} value={params[k as CharacterParamKey] as number} onChange={(e) => onParamChange(k as CharacterParamKey, Number(e.target.value))} />)}
+        </div>
       </div>
     ),
     Color: (
@@ -209,6 +215,36 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           <ColorInput label="Outline" value={params.outlineColor} onChange={e => onParamChange('outlineColor', e.target.value)} />
           <ColorInput label="Pupil" value={params.pupilColor} onChange={e => onParamChange('pupilColor', e.target.value)} />
         </div>
+    ),
+    GroupSettings: (
+      <div className="space-y-4">
+          <Slider 
+            label="Min Characters"
+            min={2}
+            max={99}
+            step={1}
+            value={minGroupSize}
+            onChange={e => onMinGroupSizeChange(Number(e.target.value))}
+          />
+          <Slider 
+            label="Max Characters"
+            min={2}
+            max={99}
+            step={1}
+            value={maxGroupSize}
+            onChange={e => onMaxGroupSizeChange(Number(e.target.value))}
+          />
+        <div className="pt-4 border-t border-gray-300">
+          <Slider 
+            label="X Separation"
+            min={100}
+            max={1500}
+            step={10}
+            value={groupXSpread}
+            onChange={e => onGroupXSpreadChange(Number(e.target.value))}
+          />
+        </div>
+      </div>
     ),
     Options: (
       <div className="space-y-3">

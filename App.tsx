@@ -86,7 +86,7 @@ const generateRandomParams = (): CharacterParams => {
     newParams.headShape = headShapes[Math.floor(Math.random() * headShapes.length)];
     const torsoShapes: CharacterParams['torsoShape'][] = ['rectangle', 'square', 'circle', 'triangle', 'inverted-triangle'];
     newParams.torsoShape = torsoShapes[Math.floor(Math.random() * torsoShapes.length)];
-    const pelvisShapes: CharacterParams['pelvisShape'][] = ['rectangle', 'horizontal-oval', 'ghost'];
+    const pelvisShapes: CharacterParams['pelvisShape'][] = ['rectangle', 'horizontal-oval'];
     newParams.pelvisShape = pelvisShapes[Math.floor(Math.random() * pelvisShapes.length)];
 
     newParams.eyeStyle = Math.random() < 0.8 ? 'blocky' : 'realistic';
@@ -110,7 +110,7 @@ const calculateLocalFootY = (params: CharacterParams): number => {
         headWidth, headHeight, headShape,
         neckHeight,
         torsoHeight, torsoWidth, torsoShape, torsoCornerRadius,
-        pelvisHeight, pelvisWidthRatio, pelvisShape,
+        pelvisHeight, pelvisWidthRatio,
         lLegWidth, rLegWidth,
         legLength, lLegAngle, rLegAngle
     } = params;
@@ -132,29 +132,14 @@ const calculateLocalFootY = (params: CharacterParams): number => {
     for (let y = searchStartY; y >= searchEndY; y -= 2) {
         if (getTorsoWidthAtY(y) >= calculatedPelvisWidth) {
             junctionY = y;
-        } else {
             break;
         }
     }
 
-    if (pelvisShape === 'ghost') {
-        const minPelvisWidthForLegSeparation = (lLegWidth + rLegWidth) * 0.75;
-        let adjustedPelvisWidth = Math.max(calculatedPelvisWidth, minPelvisWidthForLegSeparation);
-        const torsoWidthAtJunction = getTorsoWidthAtY(junctionY);
-        adjustedPelvisWidth = Math.min(adjustedPelvisWidth, torsoWidthAtJunction * 1.2);
-
-        const height = pelvisHeight * 2.5;
-        const ghostBottomY = junctionY + height;
-        const waveAmplitude = adjustedPelvisWidth * 0.2;
-        return ghostBottomY + waveAmplitude * 1.5;
-    }
-
     const pelvisOverlap = 5;
     const pelvisY = junctionY - pelvisOverlap;
-    const pelvisBottomY = pelvisY + pelvisHeight;
-    const legY = pelvisBottomY - pelvisHeight * 0.3;
-    const legRadius = Math.max(lLegWidth, rLegWidth) / 2;
-    const finalLegY = Math.max(legY, (torsoTopY + torsoHeight) + legRadius + 4);
+    const legY = pelvisY + pelvisHeight * 0.8;
+    const finalLegY = legY;
     
     const lAnkleY = finalLegY + legLength * Math.cos(lLegAngle * Math.PI / 180);
     const rAnkleY = finalLegY + legLength * Math.cos(rLegAngle * Math.PI / 180);
@@ -163,6 +148,45 @@ const calculateLocalFootY = (params: CharacterParams): number => {
     const rFootGroundY = rAnkleY + rLegWidth / 2;
     
     return Math.max(lFootGroundY, rFootGroundY);
+};
+
+const adjustParamsForLegs = (params: CharacterParams): CharacterParams => {
+    const newParams = { ...params };
+    const { lLegWidth, rLegWidth, pelvisWidthRatio } = newParams;
+    let { torsoWidth } = newParams;
+
+    // With the new hip socket design (a circle), we need to ensure the pelvis
+    // is wide enough for the two hip circles not to overlap.
+    const lLegRadius = lLegWidth / 2;
+    const rLegRadius = rLegWidth / 2;
+    // The radius of the hip socket circle is 1.6 times the leg radius.
+    const lSocketRadius = lLegRadius * 1.6;
+    const rSocketRadius = rLegRadius * 1.6;
+
+    // The minimum distance between hip joints is the sum of the two socket radii plus a small gap.
+    const minSpaceBetweenHips = lSocketRadius + rSocketRadius + 4;
+    
+    // Hip joints are positioned at 35% of the pelvis width from the center,
+    // so the distance between them is 70% of the pelvis width.
+    const minPelvisWidthForLegs = minSpaceBetweenHips / 0.7;
+
+    let calculatedPelvisWidth = torsoWidth * (pelvisWidthRatio / 100);
+
+    // If pelvis is too narrow for the legs, widen it.
+    if (calculatedPelvisWidth < minPelvisWidthForLegs) {
+        calculatedPelvisWidth = minPelvisWidthForLegs;
+    }
+    
+    // If the (potentially widened) pelvis is wider than the torso, widen the torso.
+    if (calculatedPelvisWidth > torsoWidth) {
+        torsoWidth = calculatedPelvisWidth;
+    }
+    
+    // Update params with the new calculated values
+    newParams.torsoWidth = torsoWidth;
+    newParams.pelvisWidthRatio = (calculatedPelvisWidth / torsoWidth) * 100;
+    
+    return newParams;
 };
 
 
@@ -177,6 +201,9 @@ function App() {
     animation: true,
   });
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
+  const [minGroupSize, setMinGroupSize] = useState(2);
+  const [maxGroupSize, setMaxGroupSize] = useState(8);
+  const [groupXSpread, setGroupXSpread] = useState(500);
 
   const [panels, setPanels] = useState<Record<PanelKey, PanelState>>({
     Head: { isOpen: true, position: { x: 20, y: 20 }, zIndex: 10 },
@@ -188,12 +215,57 @@ function App() {
     Arms: { isOpen: true, position: { x: 20, y: 240 }, zIndex: 9 },
     Legs: { isOpen: false, position: { x: 20, y: 460 }, zIndex: 8 },
     Color: { isOpen: true, position: { x: 280, y: 20 }, zIndex: 7 },
+    GroupSettings: { isOpen: false, position: { x: 100, y: 100 }, zIndex: 1 },
     Options: { isOpen: false, position: { x: 80, y: 80 }, zIndex: 1 },
     About: { isOpen: false, position: { x: 90, y: 90 }, zIndex: 1 },
   });
 
+  // FIX: Moved setPanelVisibility before handleRandomize to fix block-scoped variable usage before declaration.
+  const setPanelVisibility = useCallback((mode: 'single' | 'group') => {
+    setPanels(prev => {
+      const newPanelsState = JSON.parse(JSON.stringify(prev)); // Deep copy
+      const singleModePanels: PanelKey[] = ['Head', 'Hair', 'Eyes', 'Eyebrows', 'Mouth', 'Body', 'Arms', 'Legs', 'Color'];
+      const defaultOpenSingle: PanelKey[] = ['Head', 'Arms', 'Color'];
+      let maxZ = Math.max(...Object.values(newPanelsState).map((p: PanelState) => p.zIndex));
+
+      if (mode === 'group') {
+        singleModePanels.forEach(key => {
+          newPanelsState[key].isOpen = false;
+        });
+        newPanelsState.GroupSettings.isOpen = true;
+        newPanelsState.GroupSettings.zIndex = maxZ + 1;
+      } else { // mode === 'single'
+        newPanelsState.GroupSettings.isOpen = false;
+        singleModePanels.forEach(key => {
+          newPanelsState[key].isOpen = defaultOpenSingle.includes(key);
+        });
+        defaultOpenSingle.forEach(key => {
+            newPanelsState[key].zIndex = ++maxZ;
+        });
+      }
+      return newPanelsState;
+    });
+  }, []);
+
+  const handleRandomize = useCallback(() => {
+    let params = generateRandomParams();
+    params = adjustParamsForLegs(params);
+    setCharacters([{ params, x: 0, y: 0, scale: 1, zIndex: 1 }]);
+    setBackgroundOptions(prev => ({ ...prev, animation: true }));
+    setPanelVisibility('single');
+  }, [setPanelVisibility]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key.toLowerCase() === 'r') {
+            // Prevent randomization if user is typing in an input
+            const target = e.target as HTMLElement;
+            if (target.tagName.toLowerCase() === 'input' || target.tagName.toLowerCase() === 'textarea') {
+                return;
+            }
+            e.preventDefault();
+            handleRandomize();
+        }
         if (e.key === 'Tab') {
             e.preventDefault();
             setShowBoundingBoxes(prev => !prev);
@@ -201,7 +273,7 @@ function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleRandomize]);
 
   const bringToFront = (key: PanelKey) => {
     setPanels(prev => {
@@ -235,6 +307,24 @@ function App() {
     setLimbSymmetry(enabled);
   };
 
+  const handleMinGroupSizeChange = (value: number) => {
+    if (value > maxGroupSize) {
+        setMinGroupSize(value);
+        setMaxGroupSize(value);
+    } else {
+        setMinGroupSize(value);
+    }
+  };
+  
+  const handleMaxGroupSizeChange = (value: number) => {
+    if (value < minGroupSize) {
+        setMaxGroupSize(value);
+        setMinGroupSize(value);
+    } else {
+        setMaxGroupSize(value);
+    }
+  };
+
   const handleParamChange = (param: CharacterParamKey | ColorParamKey, value: number | boolean | string) => {
     // This function only works in single-character edit mode
     if (characters.length !== 1) return;
@@ -264,14 +354,7 @@ function App() {
         }
       }
       
-      if (param === 'pelvisWidthRatio' || param === 'torsoWidth') {
-        const pelvisWidthValue = param === 'pelvisWidthRatio' ? (value as number) : newParams.pelvisWidthRatio;
-        const torsoWidthValue = param === 'torsoWidth' ? (value as number) : newParams.torsoWidth;
-        const newPelvisWidth = (pelvisWidthValue / 100) * torsoWidthValue;
-        if (newPelvisWidth > torsoWidthValue) {
-          newParams.torsoWidth = newPelvisWidth;
-        }
-      }
+      newParams = adjustParamsForLegs(newParams);
       
       const widthRatio = newParams.mouthWidthRatio;
       const maxBend = 380 - 4 * widthRatio;
@@ -294,23 +377,26 @@ function App() {
     });
   };
 
-  const handleRandomize = useCallback(() => {
-    setCharacters([{ params: generateRandomParams(), x: 0, y: 0, scale: 1, zIndex: 1 }]);
-  }, []);
-
   const handleRandomizeGroup = useCallback(() => {
     const VIEWBOX_HEIGHT = 600; // Match CharacterCanvas
-    const numCharacters = Math.floor(Math.random() * 4) + 2; // 2 to 5 characters
+    const numCharacters = Math.floor(Math.random() * (maxGroupSize - minGroupSize + 1)) + minGroupSize;
     
     const generatedCharacters: Omit<CharacterInstance, 'zIndex'>[] = [];
     for (let i = 0; i < numCharacters; i++) {
+        let params = generateRandomParams();
+        params = adjustParamsForLegs(params);
+        // Disable eye tracking for performance in group mode
+        params.eyeTracking = false;
         generatedCharacters.push({
-            params: generateRandomParams(),
-            x: (Math.random() - 0.5) * 500,
+            params,
+            x: (Math.random() - 0.5) * groupXSpread,
             y: (Math.random() - 0.5) * 200,
             scale: 0.6 + Math.random() * 0.4,
         });
     }
+
+    // Disable background animation for performance in group mode
+    setBackgroundOptions(prev => ({ ...prev, animation: false }));
 
     const charactersWithFootY = generatedCharacters.map(char => {
         const localFootY = calculateLocalFootY(char.params);
@@ -329,7 +415,8 @@ function App() {
     }));
 
     setCharacters(newCharacters);
-  }, []);
+    setPanelVisibility('group');
+  }, [minGroupSize, maxGroupSize, groupXSpread, setPanelVisibility]);
 
   const currentParams = characters.length === 1 ? characters[0].params : INITIAL_PARAMS;
 
@@ -358,24 +445,28 @@ function App() {
           backgroundOptions={backgroundOptions}
           showBoundingBoxes={showBoundingBoxes}
         />
-        {characters.length === 1 && (
-          <ControlPanel
-            panels={panels}
-            params={currentParams}
-            onParamChange={handleParamChange}
-            backgroundOptions={backgroundOptions}
-            onBackgroundOptionsChange={setBackgroundOptions}
-            limbSymmetry={limbSymmetry}
-            onLimbSymmetryChange={handleLimbSymmetryChange}
-            maxMouthBend={maxMouthBend}
-            maxFringeHeightRatio={maxFringeHeightRatio}
-            showBoundingBoxes={showBoundingBoxes}
-            onShowBoundingBoxesChange={setShowBoundingBoxes}
-            togglePanel={togglePanel}
-            updatePanelPosition={updatePanelPosition}
-            bringToFront={bringToFront}
-          />
-        )}
+        <ControlPanel
+          panels={panels}
+          params={currentParams}
+          onParamChange={handleParamChange}
+          backgroundOptions={backgroundOptions}
+          onBackgroundOptionsChange={setBackgroundOptions}
+          limbSymmetry={limbSymmetry}
+          onLimbSymmetryChange={handleLimbSymmetryChange}
+          maxMouthBend={maxMouthBend}
+          maxFringeHeightRatio={maxFringeHeightRatio}
+          showBoundingBoxes={showBoundingBoxes}
+          onShowBoundingBoxesChange={setShowBoundingBoxes}
+          minGroupSize={minGroupSize}
+          onMinGroupSizeChange={handleMinGroupSizeChange}
+          maxGroupSize={maxGroupSize}
+          onMaxGroupSizeChange={handleMaxGroupSizeChange}
+          groupXSpread={groupXSpread}
+          onGroupXSpreadChange={setGroupXSpread}
+          togglePanel={togglePanel}
+          updatePanelPosition={updatePanelPosition}
+          bringToFront={bringToFront}
+        />
       </main>
     </div>
   );
