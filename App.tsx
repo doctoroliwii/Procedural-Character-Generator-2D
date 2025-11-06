@@ -1,10 +1,10 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
-import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance } from './types';
+import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData } from './types';
 import { INITIAL_PARAMS, PARAM_CONFIGS } from './constants';
 import CharacterCanvas from './components/CharacterCanvas';
 import ControlPanel, { PanelKey, PanelState } from './components/ControlPanel';
 import MenuBar from './components/MenuBar';
+import { generateComicScript, getTrendingTopic } from './services/geminiService';
 
 const generateRandomParams = (): CharacterParams => {
     const newParams: Partial<CharacterParams> = {};
@@ -155,34 +155,22 @@ const adjustParamsForLegs = (params: CharacterParams): CharacterParams => {
     const { lLegWidth, rLegWidth, pelvisWidthRatio } = newParams;
     let { torsoWidth } = newParams;
 
-    // With the new hip socket design (a circle), we need to ensure the pelvis
-    // is wide enough for the two hip circles not to overlap.
     const lLegRadius = lLegWidth / 2;
     const rLegRadius = rLegWidth / 2;
-    // The radius of the hip socket circle is 1.6 times the leg radius.
     const lSocketRadius = lLegRadius * 1.6;
     const rSocketRadius = rLegRadius * 1.6;
-
-    // The minimum distance between hip joints is the sum of the two socket radii plus a small gap.
     const minSpaceBetweenHips = lSocketRadius + rSocketRadius + 4;
-    
-    // Hip joints are positioned at 35% of the pelvis width from the center,
-    // so the distance between them is 70% of the pelvis width.
     const minPelvisWidthForLegs = minSpaceBetweenHips / 0.7;
-
     let calculatedPelvisWidth = torsoWidth * (pelvisWidthRatio / 100);
 
-    // If pelvis is too narrow for the legs, widen it.
     if (calculatedPelvisWidth < minPelvisWidthForLegs) {
         calculatedPelvisWidth = minPelvisWidthForLegs;
     }
     
-    // If the (potentially widened) pelvis is wider than the torso, widen the torso.
     if (calculatedPelvisWidth > torsoWidth) {
         torsoWidth = calculatedPelvisWidth;
     }
     
-    // Update params with the new calculated values
     newParams.torsoWidth = torsoWidth;
     newParams.pelvisWidthRatio = (calculatedPelvisWidth / torsoWidth) * 100;
     
@@ -204,6 +192,18 @@ function App() {
   const [minGroupSize, setMinGroupSize] = useState(2);
   const [maxGroupSize, setMaxGroupSize] = useState(8);
   const [groupXSpread, setGroupXSpread] = useState(500);
+  
+  // Comic state
+  const [comicPanels, setComicPanels] = useState<ComicPanelData[] | null>(null);
+  const [comicTheme, setComicTheme] = useState('Un robot descubre la amistad');
+  const [numComicPanels, setNumComicPanels] = useState(4);
+  const [isGeneratingComic, setIsGeneratingComic] = useState(false);
+  const [isRandomizingComic, setIsRandomizingComic] = useState(false);
+  const [comicAspectRatio, setComicAspectRatio] = useState<'1:1' | '16:9' | '9:16'>('1:1');
+  const [minComicFontSize, setMinComicFontSize] = useState(12);
+  const [maxComicFontSize, setMaxComicFontSize] = useState(18);
+  const [comicLanguage, setComicLanguage] = useState('es');
+
 
   const [panels, setPanels] = useState<Record<PanelKey, PanelState>>({
     Head: { isOpen: true, position: { x: 20, y: 20 }, zIndex: 10 },
@@ -216,31 +216,32 @@ function App() {
     Legs: { isOpen: false, position: { x: 20, y: 460 }, zIndex: 8 },
     Color: { isOpen: true, position: { x: 280, y: 20 }, zIndex: 7 },
     GroupSettings: { isOpen: false, position: { x: 100, y: 100 }, zIndex: 1 },
+    Comic: { isOpen: false, position: { x: 280, y: 240 }, zIndex: 1 },
     Options: { isOpen: false, position: { x: 80, y: 80 }, zIndex: 1 },
     About: { isOpen: false, position: { x: 90, y: 90 }, zIndex: 1 },
   });
 
-  // FIX: Moved setPanelVisibility before handleRandomize to fix block-scoped variable usage before declaration.
-  const setPanelVisibility = useCallback((mode: 'single' | 'group') => {
+  const setPanelVisibility = useCallback((mode: 'single' | 'group' | 'comic') => {
     setPanels(prev => {
-      const newPanelsState = JSON.parse(JSON.stringify(prev)); // Deep copy
-      const singleModePanels: PanelKey[] = ['Head', 'Hair', 'Eyes', 'Eyebrows', 'Mouth', 'Body', 'Arms', 'Legs', 'Color'];
-      const defaultOpenSingle: PanelKey[] = ['Head', 'Arms', 'Color'];
-      let maxZ = Math.max(...Object.values(newPanelsState).map((p: PanelState) => p.zIndex));
+      const newPanelsState: Record<PanelKey, PanelState> = JSON.parse(JSON.stringify(prev));
+      let maxZ = Math.max(...Object.values(newPanelsState).map(p => p.zIndex));
 
-      if (mode === 'group') {
-        singleModePanels.forEach(key => {
-          newPanelsState[key].isOpen = false;
-        });
+      // Close all panels
+      (Object.keys(newPanelsState) as PanelKey[]).forEach(key => {
+        newPanelsState[key].isOpen = false;
+      });
+
+      if (mode === 'comic') {
+        newPanelsState.Comic.isOpen = true;
+        newPanelsState.Comic.zIndex = ++maxZ;
+      } else if (mode === 'group') {
         newPanelsState.GroupSettings.isOpen = true;
-        newPanelsState.GroupSettings.zIndex = maxZ + 1;
+        newPanelsState.GroupSettings.zIndex = ++maxZ;
       } else { // mode === 'single'
-        newPanelsState.GroupSettings.isOpen = false;
-        singleModePanels.forEach(key => {
-          newPanelsState[key].isOpen = defaultOpenSingle.includes(key);
-        });
+        const defaultOpenSingle: PanelKey[] = ['Head', 'Arms', 'Color'];
         defaultOpenSingle.forEach(key => {
-            newPanelsState[key].zIndex = ++maxZ;
+          newPanelsState[key].isOpen = true;
+          newPanelsState[key].zIndex = ++maxZ;
         });
       }
       return newPanelsState;
@@ -248,6 +249,7 @@ function App() {
   }, []);
 
   const handleRandomize = useCallback(() => {
+    setComicPanels(null); // Exit comic mode
     let params = generateRandomParams();
     params = adjustParamsForLegs(params);
     setCharacters([{ params, x: 0, y: 0, scale: 1, zIndex: 1 }]);
@@ -255,137 +257,15 @@ function App() {
     setPanelVisibility('single');
   }, [setPanelVisibility]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key.toLowerCase() === 'r') {
-            // Prevent randomization if user is typing in an input
-            const target = e.target as HTMLElement;
-            if (target.tagName.toLowerCase() === 'input' || target.tagName.toLowerCase() === 'textarea') {
-                return;
-            }
-            e.preventDefault();
-            handleRandomize();
-        }
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            setShowBoundingBoxes(prev => !prev);
-        }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleRandomize]);
-
-  const bringToFront = (key: PanelKey) => {
-    setPanels(prev => {
-      const maxZ = Math.max(...Object.values(prev).map((p: PanelState) => p.zIndex));
-      if (prev[key].zIndex === maxZ) return prev;
-      return {
-        ...prev,
-        [key]: { ...prev[key], zIndex: maxZ + 1 },
-      };
-    });
-  };
-
-  const togglePanel = useCallback((key: PanelKey) => {
-    setPanels(prev => ({
-      ...prev,
-      [key]: { ...prev[key], isOpen: !prev[key].isOpen },
-    }));
-    if (!panels[key].isOpen) {
-      bringToFront(key);
-    }
-  }, [panels]);
-
-  const updatePanelPosition = useCallback((key: PanelKey, position: { x: number; y: number }) => {
-    setPanels(prev => ({
-      ...prev,
-      [key]: { ...prev[key], position },
-    }));
-  }, []);
-
-  const handleLimbSymmetryChange = (enabled: boolean) => {
-    setLimbSymmetry(enabled);
-  };
-
-  const handleMinGroupSizeChange = (value: number) => {
-    if (value > maxGroupSize) {
-        setMinGroupSize(value);
-        setMaxGroupSize(value);
-    } else {
-        setMinGroupSize(value);
-    }
-  };
-  
-  const handleMaxGroupSizeChange = (value: number) => {
-    if (value < minGroupSize) {
-        setMaxGroupSize(value);
-        setMinGroupSize(value);
-    } else {
-        setMaxGroupSize(value);
-    }
-  };
-
-  const handleParamChange = (param: CharacterParamKey | ColorParamKey, value: number | boolean | string) => {
-    // This function only works in single-character edit mode
-    if (characters.length !== 1) return;
-
-    const symmetryMap: Partial<Record<CharacterParamKey, CharacterParamKey>> = {
-      'lArmAngle': 'rArmAngle', 'rArmAngle': 'lArmAngle',
-      'lArmBend': 'rArmBend', 'rArmBend': 'lArmBend',
-      'lLegAngle': 'rLegAngle', 'rLegAngle': 'lLegAngle',
-      'lLegBend': 'rLegBend', 'rLegBend': 'lLegBend',
-      'lArmWidth': 'rArmWidth', 'rArmWidth': 'lArmWidth',
-      'lHandSize': 'rHandSize', 'rHandSize': 'lHandSize',
-      'lLegWidth': 'rLegWidth', 'rLegWidth': 'lLegWidth',
-      'lFootSize': 'rFootSize', 'rFootSize': 'lFootSize',
-    };
-    const bendParams: CharacterParamKey[] = ['lArmBend', 'rArmBend', 'lLegBend', 'rLegBend'];
-
-    setCharacters(prev => {
-      const currentParams = prev[0].params;
-      let newParams = { ...currentParams, [param]: value };
-
-      if (limbSymmetry && symmetryMap[param as CharacterParamKey]) {
-        const symmetricParam = symmetryMap[param as CharacterParamKey]!;
-        if (bendParams.includes(param as CharacterParamKey)) {
-            (newParams as any)[symmetricParam] = -(value as number);
-        } else {
-            (newParams as any)[symmetricParam] = value;
-        }
-      }
-      
-      newParams = adjustParamsForLegs(newParams);
-      
-      const widthRatio = newParams.mouthWidthRatio;
-      const maxBend = 380 - 4 * widthRatio;
-      newParams.mouthBend = Math.max(-maxBend, Math.min(maxBend, newParams.mouthBend));
-
-      if (param === 'eyeSizeRatio' || param === 'headHeight') {
-          const { headHeight, eyeSizeRatio, fringeHeightRatio } = newParams;
-          const margin = 5;
-          const headTopY = 120 - headHeight / 2;
-          const eyeTopY = 120 - (headHeight * (eyeSizeRatio / 100));
-          const maxFringeHeightPx = eyeTopY - headTopY - margin;
-          const maxFringeHeightRatio = Math.max(0, (maxFringeHeightPx / headHeight) * 100);
-          
-          if (fringeHeightRatio > maxFringeHeightRatio) {
-            newParams.fringeHeightRatio = maxFringeHeightRatio;
-          }
-      }
-
-      return [{ ...prev[0], params: newParams }];
-    });
-  };
-
   const handleRandomizeGroup = useCallback(() => {
-    const VIEWBOX_HEIGHT = 600; // Match CharacterCanvas
+    setComicPanels(null); // Exit comic mode
+    const VIEWBOX_HEIGHT = 600; 
     const numCharacters = Math.floor(Math.random() * (maxGroupSize - minGroupSize + 1)) + minGroupSize;
     
     const generatedCharacters: Omit<CharacterInstance, 'zIndex'>[] = [];
     for (let i = 0; i < numCharacters; i++) {
         let params = generateRandomParams();
         params = adjustParamsForLegs(params);
-        // Disable eye tracking for performance in group mode
         params.eyeTracking = false;
         generatedCharacters.push({
             params,
@@ -395,7 +275,6 @@ function App() {
         });
     }
 
-    // Disable background animation for performance in group mode
     setBackgroundOptions(prev => ({ ...prev, animation: false }));
 
     const charactersWithFootY = generatedCharacters.map(char => {
@@ -418,10 +297,223 @@ function App() {
     setPanelVisibility('group');
   }, [minGroupSize, maxGroupSize, groupXSpread, setPanelVisibility]);
 
+  const generatePanelLayouts = (count: number) => {
+    const layouts = [];
+    const gutter = 2; // percentage
+    if (count === 0) return [];
+    
+    let cols, rows;
+    switch (count) {
+        case 1: cols = 1; rows = 1; break;
+        case 2: cols = 1; rows = 2; break;
+        case 3: cols = 1; rows = 3; break;
+        case 4: cols = 2; rows = 2; break;
+        case 5: cols = 2; rows = 3; break; // 2x2 grid with one spanning the bottom
+        case 6: cols = 2; rows = 3; break;
+        default: cols = 2; rows = Math.ceil(count / 2); break;
+    }
+
+    const panelWidth = (100 - (cols + 1) * gutter) / cols;
+    const panelHeight = (100 - (rows + 1) * gutter) / rows;
+
+    for (let i = 0; i < count; i++) {
+        if (count === 5 && i === 4) { // Special case for 5 panels
+            layouts.push({
+                x: gutter,
+                y: gutter + 2 * (panelHeight + gutter),
+                width: 100 - 2 * gutter,
+                height: panelHeight,
+            });
+        } else {
+            const row = Math.floor(i / cols);
+            const col = i % cols;
+            layouts.push({
+                x: gutter + col * (panelWidth + gutter),
+                y: gutter + row * (panelHeight + gutter),
+                width: panelWidth,
+                height: panelHeight,
+            });
+        }
+    }
+    return layouts;
+  };
+
+  const handleGenerateComic = useCallback(async (options?: { theme?: string; panels?: number; language?: string; }) => {
+    setIsGeneratingComic(true);
+    setCharacters([]);
+    setComicPanels([]);
+    
+    const themeToUse = options?.theme ?? comicTheme;
+    const panelsToUse = options?.panels ?? numComicPanels;
+    const languageToUse = options?.language ?? comicLanguage;
+
+    try {
+      const script = await generateComicScript(themeToUse, panelsToUse, languageToUse);
+      if (!script || !script.panels || script.panels.length === 0) {
+        throw new Error("Received an empty or invalid script from the API.");
+      }
+
+      const uniqueCharacterParams: CharacterParams[] = [];
+      for (let i = 0; i < script.totalUniqueCharacters; i++) {
+        let params = generateRandomParams();
+        params = adjustParamsForLegs(params);
+        params.eyeTracking = false;
+        uniqueCharacterParams.push(params);
+      }
+      
+      const newPanels: ComicPanelData[] = [];
+      const panelLayouts = generatePanelLayouts(script.panels.length);
+
+      for (let i = 0; i < script.panels.length; i++) {
+        const panelScript = script.panels[i];
+        const panelCharacters: CharacterInstance[] = [];
+
+        panelScript.charactersInPanel.forEach((charId, indexInPanel) => {
+          if (charId < uniqueCharacterParams.length) {
+            const params = uniqueCharacterParams[charId];
+            panelCharacters.push({
+              params,
+              x: (panelScript.charactersInPanel.length > 1) ? (indexInPanel * 150 - (panelScript.charactersInPanel.length - 1) * 75) : 0,
+              y: (Math.random() * 50),
+              scale: 0.8,
+              zIndex: indexInPanel + 1
+            });
+          }
+        });
+        
+        newPanels.push({
+          id: `panel-${i}-${Date.now()}`,
+          layout: panelLayouts[i],
+          characters: panelCharacters,
+          characterIdsInPanel: panelScript.charactersInPanel,
+          dialogues: panelScript.dialogues || [],
+          backgroundColor: `hsl(${Math.random() * 360}, 50%, 95%)`,
+          description: panelScript.description,
+          shotType: panelScript.shotType || 'medium-shot',
+        });
+      }
+      setComicPanels(newPanels);
+
+    } catch (error) {
+      console.error("Failed to generate comic", error);
+      alert("There was an error generating the comic. Please check the console for details.");
+    } finally {
+      setIsGeneratingComic(false);
+    }
+  }, [comicTheme, numComicPanels, comicLanguage]);
+  
+  const handleRandomizeComic = useCallback(async () => {
+    setIsRandomizingComic(true);
+    let themeToUse = '';
+    try {
+      themeToUse = await getTrendingTopic();
+    } catch (error) {
+      console.warn("Failed to get trending topic, using a fallback.", error);
+      const randomThemes = [
+        'Un robot descubre la amistad',
+        'Un gato detective resuelve el misterio del ovillo de lana perdido',
+        'Dos ardillas discutiendo por la última bellota',
+        'Una cafetera sensible se enamora de una tostadora',
+        'Piratas intentando descubrir cómo usar un microondas'
+      ];
+      themeToUse = randomThemes[Math.floor(Math.random() * randomThemes.length)];
+    }
+    
+    const randomPanels = Math.floor(Math.random() * 4) + 2; // 2 to 5 panels
+    
+    setComicTheme(themeToUse);
+    setNumComicPanels(randomPanels);
+    
+    setPanelVisibility('comic');
+    await handleGenerateComic({ theme: themeToUse, panels: randomPanels });
+    setIsRandomizingComic(false);
+  }, [handleGenerateComic, setPanelVisibility]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key.toLowerCase() === 'r') {
+            const target = e.target as HTMLElement;
+            if (target.tagName.toLowerCase() === 'input' || target.tagName.toLowerCase() === 'textarea') return;
+            e.preventDefault();
+            if (comicPanels !== null) {
+              handleGenerateComic();
+            } else {
+              handleRandomize();
+            }
+        }
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            setShowBoundingBoxes(prev => !prev);
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleRandomize, comicPanels, handleGenerateComic]);
+
+  const bringToFront = (key: PanelKey) => {
+    setPanels(prev => {
+      const maxZ = Math.max(...Object.values(prev).map((p: PanelState) => p.zIndex));
+      if (prev[key].zIndex === maxZ) return prev;
+      return { ...prev, [key]: { ...prev[key], zIndex: maxZ + 1 } };
+    });
+  };
+
+  const togglePanel = useCallback((key: PanelKey) => {
+    setPanels(prev => ({ ...prev, [key]: { ...prev[key], isOpen: !prev[key].isOpen } }));
+    if (!panels[key].isOpen) bringToFront(key);
+  }, [panels]);
+
+  const handleMenuItemClick = (key: PanelKey) => {
+    if (key === 'Comic') {
+        if (comicPanels === null) {
+          setComicPanels([]);
+        }
+        setCharacters([]);
+        setPanelVisibility('comic');
+    }
+    togglePanel(key);
+  };
+
+  const updatePanelPosition = useCallback((key: PanelKey, position: { x: number; y: number }) => {
+    setPanels(prev => ({ ...prev, [key]: { ...prev[key], position } }));
+  }, []);
+
+  const handleLimbSymmetryChange = (enabled: boolean) => setLimbSymmetry(enabled);
+  const handleMinGroupSizeChange = (value: number) => { if (value > maxGroupSize) { setMinGroupSize(value); setMaxGroupSize(value); } else { setMinGroupSize(value); } };
+  const handleMaxGroupSizeChange = (value: number) => { if (value < minGroupSize) { setMaxGroupSize(value); setMinGroupSize(value); } else { setMaxGroupSize(value); } };
+  const handleMinComicFontSizeChange = (value: number) => { if (value > maxComicFontSize) { setMinComicFontSize(value); setMaxComicFontSize(value); } else { setMinComicFontSize(value); } };
+  const handleMaxComicFontSizeChange = (value: number) => { if (value < minComicFontSize) { setMaxComicFontSize(value); setMinComicFontSize(value); } else { setMaxComicFontSize(value); } };
+
+  const handleParamChange = (param: CharacterParamKey | ColorParamKey, value: number | boolean | string) => {
+    if (characters.length !== 1) return;
+    const symmetryMap: Partial<Record<CharacterParamKey, CharacterParamKey>> = { 'lArmAngle': 'rArmAngle', 'rArmAngle': 'lArmAngle', 'lArmBend': 'rArmBend', 'rArmBend': 'lArmBend', 'lLegAngle': 'rLegAngle', 'rLegAngle': 'lLegAngle', 'lLegBend': 'rLegBend', 'rLegBend': 'lLegBend', 'lArmWidth': 'rArmWidth', 'rArmWidth': 'lArmWidth', 'lHandSize': 'rHandSize', 'rHandSize': 'lHandSize', 'lLegWidth': 'rLegWidth', 'rLegWidth': 'lLegWidth', 'lFootSize': 'rFootSize', 'rFootSize': 'lFootSize' };
+    const bendParams: CharacterParamKey[] = ['lArmBend', 'rArmBend', 'lLegBend', 'rLegBend'];
+
+    setCharacters(prev => {
+      let newParams = { ...prev[0].params, [param]: value };
+      if (limbSymmetry && symmetryMap[param as CharacterParamKey]) {
+        const symmetricParam = symmetryMap[param as CharacterParamKey]!;
+        if (bendParams.includes(param as CharacterParamKey)) { (newParams as any)[symmetricParam] = -(value as number); } else { (newParams as any)[symmetricParam] = value; }
+      }
+      newParams = adjustParamsForLegs(newParams);
+      const widthRatio = newParams.mouthWidthRatio;
+      const maxBend = 380 - 4 * widthRatio;
+      newParams.mouthBend = Math.max(-maxBend, Math.min(maxBend, newParams.mouthBend));
+      if (param === 'eyeSizeRatio' || param === 'headHeight') {
+          const { headHeight, eyeSizeRatio, fringeHeightRatio } = newParams;
+          const margin = 5;
+          const headTopY = 120 - headHeight / 2;
+          const eyeTopY = 120 - (headHeight * (eyeSizeRatio / 100));
+          const maxFringeHeightPx = eyeTopY - headTopY - margin;
+          const maxFringeHeightRatio = Math.max(0, (maxFringeHeightPx / headHeight) * 100);
+          if (fringeHeightRatio > maxFringeHeightRatio) { newParams.fringeHeightRatio = maxFringeHeightRatio; }
+      }
+      return [{ ...prev[0], params: newParams }];
+    });
+  };
+  
   const currentParams = characters.length === 1 ? characters[0].params : INITIAL_PARAMS;
-
   const maxMouthBend = 380 - 4 * currentParams.mouthWidthRatio;
-
   const maxFringeHeightRatio = (() => {
     const { headHeight, eyeSizeRatio } = currentParams;
     const margin = 5;
@@ -437,13 +529,19 @@ function App() {
       <MenuBar
         onRandomize={handleRandomize}
         onRandomizeGroup={handleRandomizeGroup}
-        onMenuItemClick={togglePanel}
+        onRandomizeComic={handleRandomizeComic}
+        isRandomizingComic={isRandomizingComic}
+        onMenuItemClick={handleMenuItemClick}
       />
       <main className="flex-grow relative">
         <CharacterCanvas
           characters={characters}
+          comicPanels={comicPanels}
           backgroundOptions={backgroundOptions}
           showBoundingBoxes={showBoundingBoxes}
+          comicAspectRatio={comicAspectRatio}
+          minComicFontSize={minComicFontSize}
+          maxComicFontSize={maxComicFontSize}
         />
         <ControlPanel
           panels={panels}
@@ -463,6 +561,20 @@ function App() {
           onMaxGroupSizeChange={handleMaxGroupSizeChange}
           groupXSpread={groupXSpread}
           onGroupXSpreadChange={setGroupXSpread}
+          comicTheme={comicTheme}
+          onComicThemeChange={setComicTheme}
+          numComicPanels={numComicPanels}
+          onNumComicPanelsChange={setNumComicPanels}
+          comicAspectRatio={comicAspectRatio}
+          onComicAspectRatioChange={setComicAspectRatio}
+          minComicFontSize={minComicFontSize}
+          onMinComicFontSizeChange={handleMinComicFontSizeChange}
+          maxComicFontSize={maxComicFontSize}
+          onMaxComicFontSizeChange={handleMaxComicFontSizeChange}
+          comicLanguage={comicLanguage}
+          onComicLanguageChange={setComicLanguage}
+          onGenerateComic={() => handleGenerateComic()}
+          isGeneratingComic={isGeneratingComic || isRandomizingComic}
           togglePanel={togglePanel}
           updatePanelPosition={updatePanelPosition}
           bringToFront={bringToFront}
@@ -471,5 +583,4 @@ function App() {
     </div>
   );
 }
-// FIX: Export the App component as a default export
 export default App;

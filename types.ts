@@ -92,3 +92,26 @@ export interface BackgroundOptions {
 export type CharacterParamKey = keyof Omit<CharacterParams, 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor' | 'hairColor'>;
 
 export type ColorParamKey = keyof Pick<CharacterParams, 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor' | 'hairColor'>;
+
+export interface LayoutData {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DialogueData {
+  characterId: number;
+  text: string;
+}
+
+export interface ComicPanelData {
+  id: string;
+  layout: LayoutData;
+  characters: CharacterInstance[];
+  characterIdsInPanel: number[];
+  dialogues: DialogueData[];
+  backgroundColor: string;
+  description: string;
+  shotType: 'close-up' | 'medium-shot' | 'full-shot';
+}

@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 interface MenuItem {
   label: string;
   action: () => void;
+  disabled?: boolean;
 }
 
 interface MenuProps {
@@ -53,8 +54,9 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
           {items.map(item => (
             <button
               key={item.label}
-              onClick={() => handleItemClick(item.action)}
-              className="w-full text-left px-4 py-2 text-sm text-gray-800 hover:bg-sky-500 hover:text-white transition-colors duration-150 select-none"
+              onClick={() => !item.disabled && handleItemClick(item.action)}
+              disabled={item.disabled}
+              className="w-full text-left px-4 py-2 text-sm text-gray-800 hover:bg-sky-500 hover:text-white transition-colors duration-150 select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-800"
             >
               {item.label}
             </button>

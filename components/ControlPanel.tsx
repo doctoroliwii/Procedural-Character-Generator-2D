@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions } from '../types';
 import { PARAM_CONFIGS } from '../constants';
@@ -23,12 +22,28 @@ interface ControlPanelProps {
   onMaxGroupSizeChange: (value: number) => void;
   groupXSpread: number;
   onGroupXSpreadChange: (value: number) => void;
+  // Comic controls
+  comicTheme: string;
+  onComicThemeChange: (value: string) => void;
+  numComicPanels: number;
+  onNumComicPanelsChange: (value: number) => void;
+  comicAspectRatio: '1:1' | '16:9' | '9:16';
+  onComicAspectRatioChange: (value: '1:1' | '16:9' | '9:16') => void;
+  minComicFontSize: number;
+  onMinComicFontSizeChange: (value: number) => void;
+  maxComicFontSize: number;
+  onMaxComicFontSizeChange: (value: number) => void;
+  comicLanguage: string;
+  onComicLanguageChange: (value: string) => void;
+  onGenerateComic: () => void;
+  isGeneratingComic: boolean;
+  // Panel controls
   togglePanel: (key: PanelKey) => void;
   updatePanelPosition: (key: PanelKey, position: { x: number; y: number }) => void;
   bringToFront: (key: PanelKey) => void;
 }
 
-export type PanelKey = 'Head' | 'Hair' | 'Eyes' | 'Eyebrows' | 'Mouth' | 'Body' | 'Arms' | 'Legs' | 'Color' | 'GroupSettings' | 'Options' | 'About';
+export type PanelKey = 'Head' | 'Hair' | 'Eyes' | 'Eyebrows' | 'Mouth' | 'Body' | 'Arms' | 'Legs' | 'Color' | 'GroupSettings' | 'Options' | 'About' | 'Comic';
 
 export interface PanelState {
   isOpen: boolean;
@@ -54,6 +69,20 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   onMaxGroupSizeChange,
   groupXSpread,
   onGroupXSpreadChange,
+  comicTheme,
+  onComicThemeChange,
+  numComicPanels,
+  onNumComicPanelsChange,
+  comicAspectRatio,
+  onComicAspectRatioChange,
+  minComicFontSize,
+  onMinComicFontSizeChange,
+  maxComicFontSize,
+  onMaxComicFontSizeChange,
+  comicLanguage,
+  onComicLanguageChange,
+  onGenerateComic,
+  isGeneratingComic,
   togglePanel,
   updatePanelPosition,
   bringToFront
@@ -68,7 +97,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   const ShapeSelector = ({ label, value, options, onChange }: { label: string, value: string, options: string[], onChange: (value: string) => void }) => (
     <div>
       <label className="font-medium text-gray-700 select-none text-sm mb-1 block">{label}</label>
-      <div className="grid grid-cols-2 gap-1 w-full bg-gray-100 rounded-lg p-1">
+      <div className="grid grid-cols-3 gap-1 w-full bg-gray-100 rounded-lg p-1">
         {options.map(option => (
           <button
             key={option}
@@ -245,6 +274,84 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           />
         </div>
       </div>
+    ),
+    Comic: (
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="comic-theme" className="block text-sm font-medium text-gray-700 mb-1 select-none">Comic Theme</label>
+            <textarea
+              id="comic-theme"
+              value={comicTheme}
+              onChange={e => onComicThemeChange(e.target.value)}
+              rows={3}
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-sm bg-white text-gray-900"
+              placeholder="e.g., a robot discovers friendship"
+            />
+          </div>
+          <Slider
+            label="Panels"
+            min={1}
+            max={6}
+            step={1}
+            value={numComicPanels}
+            onChange={e => onNumComicPanelsChange(Number(e.target.value))}
+          />
+          <div className="pt-4 border-t border-gray-300 space-y-3">
+            <div>
+              <label htmlFor="language-select" className="block text-sm font-medium text-gray-700 mb-1 select-none">Language</label>
+              <select
+                id="language-select"
+                value={comicLanguage}
+                onChange={(e) => onComicLanguageChange(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-sm bg-white"
+              >
+                <option value="es">Español</option>
+                <option value="en">Inglés</option>
+                <option value="ja">Japonés</option>
+                <option value="zh">Chino</option>
+                <option value="ru">Ruso</option>
+                <option value="hi">Hindi</option>
+              </select>
+            </div>
+            <ShapeSelector 
+              label="Aspect Ratio" 
+              value={comicAspectRatio} 
+              options={['1:1', '16:9', '9:16']} 
+              onChange={(v) => onComicAspectRatioChange(v as '1:1' | '16:9' | '9:16')} 
+            />
+            <Slider
+              label="Min Font Size"
+              min={10}
+              max={24}
+              step={1}
+              value={minComicFontSize}
+              onChange={e => onMinComicFontSizeChange(Number(e.target.value))}
+            />
+            <Slider
+              label="Max Font Size"
+              min={10}
+              max={24}
+              step={1}
+              value={maxComicFontSize}
+              onChange={e => onMaxComicFontSizeChange(Number(e.target.value))}
+            />
+          </div>
+          <button
+            onClick={onGenerateComic}
+            disabled={isGeneratingComic}
+            className="w-full bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {isGeneratingComic ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Generating...
+              </>
+            ) : 'Generate Comic'}
+          </button>
+        </div>
     ),
     Options: (
       <div className="space-y-3">

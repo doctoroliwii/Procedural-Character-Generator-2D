@@ -1,4 +1,3 @@
-
 import React from 'react';
 import Menu from './Menu';
 import { PanelKey } from './ControlPanel';
@@ -6,13 +5,16 @@ import { PanelKey } from './ControlPanel';
 interface MenuBarProps {
   onRandomize: () => void;
   onRandomizeGroup: () => void;
+  onRandomizeComic: () => void;
+  isRandomizingComic: boolean;
   onMenuItemClick: (key: PanelKey) => void;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onMenuItemClick }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onRandomizeComic, isRandomizingComic, onMenuItemClick }) => {
   const fileItems = [
     { label: 'Randomize Character', action: onRandomize },
     { label: 'Randomize Group', action: onRandomizeGroup },
+    { label: 'Randomize Comic', action: onRandomizeComic, disabled: isRandomizingComic },
   ];
   const headItems = [
     { label: 'Head', action: () => onMenuItemClick('Head') },
@@ -30,6 +32,9 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onMenu
   const groupItems = [
     { label: 'Group Settings', action: () => onMenuItemClick('GroupSettings') }
   ];
+  const comicItems = [
+    { label: 'Comic Settings', action: () => onMenuItemClick('Comic') }
+  ];
   const viewItems = [{ label: 'Options', action: () => onMenuItemClick('Options') }];
   const helpItems = [{ label: 'About', action: () => onMenuItemClick('About') }];
 
@@ -40,6 +45,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onMenu
       <Menu title="Head" items={headItems} />
       <Menu title="Body" items={bodyItems} />
       <Menu title="Group" items={groupItems} />
+      <Menu title="Comic" items={comicItems} />
       <Menu title="View" items={viewItems} />
       <Menu title="Help" items={helpItems} />
     </header>
