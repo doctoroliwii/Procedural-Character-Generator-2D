@@ -35,6 +35,12 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onRand
   const comicItems = [
     { label: 'Comic Settings', action: () => onMenuItemClick('Comic') }
   ];
+  const universeItems = [
+    { label: 'Editor de Universo', action: () => onMenuItemClick('LoreEditor') }
+  ];
+  const characterItems = [
+    { label: 'Editor de Personajes', action: () => onMenuItemClick('CharacterEditor') }
+  ];
   const viewItems = [{ label: 'Options', action: () => onMenuItemClick('Options') }];
   const helpItems = [{ label: 'About', action: () => onMenuItemClick('About') }];
 
@@ -46,6 +52,8 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeGroup, onRand
       <Menu title="Body" items={bodyItems} />
       <Menu title="Group" items={groupItems} />
       <Menu title="Comic" items={comicItems} />
+      <Menu title="Universo" items={universeItems} />
+      <Menu title="Personajes" items={characterItems} />
       <Menu title="View" items={viewItems} />
       <Menu title="Help" items={helpItems} />
     </header>

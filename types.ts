@@ -74,6 +74,7 @@ export interface CharacterInstance {
   y: number;
   scale: number;
   zIndex: number;
+  isFlipped?: boolean;
 }
 
 export interface ParamConfig {
@@ -114,4 +115,61 @@ export interface ComicPanelData {
   backgroundColor: string;
   description: string;
   shotType: 'close-up' | 'medium-shot' | 'full-shot';
+}
+
+// --- NEW NARRATIVE SYSTEM TYPES ---
+
+export interface Location {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface Lore {
+  genre: string;
+  rules: string;
+  locations: Location[];
+  history: string;
+}
+
+export interface Psychology {
+  motivation: string;
+  fear: string;
+  virtues: string;
+  flaws: string;
+  archetype: string;
+}
+
+export interface Backstory {
+  origin: string;
+  wound: string;
+  journey: string;
+  initialState: string;
+}
+
+export interface CharacterProfile {
+  id: string;
+  name: string;
+  age: string;
+  species: string;
+  occupation: string;
+  originLocationId: string;
+  psychology: Psychology;
+  skills: string;
+  limitations: string;
+  backstory: Backstory;
+  characterParams?: CharacterParams;
+}
+
+export interface StoryCircleStep {
+  step: number;
+  title: string;
+  description: string;
+}
+
+export interface Story {
+  genre: string;
+  stakes: string;
+  characterProfileIds: string[];
+  storyCircle: StoryCircleStep[];
 }

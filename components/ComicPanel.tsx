@@ -11,6 +11,12 @@ function checkCollision(rectA: {x: number, y: number, width: number, height: num
          rectA.y + rectA.height > rectB.y;
 }
 
+const getClosestPointOnRect = (point: {x: number, y: number}, rect: {x: number, y: number, width: number, height: number}) => {
+    const closestX = Math.max(rect.x, Math.min(point.x, rect.x + rect.width));
+    const closestY = Math.max(rect.y, Math.min(point.y, rect.y + rect.height));
+    return { x: closestX, y: closestY };
+};
+
 function findOptimalBubblePosition(
     speakerHead: {x: number, y: number, width: number, height: number},
     bubbleW: number,
@@ -18,15 +24,20 @@ function findOptimalBubblePosition(
     allHeadsInPanel: {x: number, y: number, width: number, height: number}[],
     otherBubbleRects: {x: number, y: number, width: number, height: number}[]
 ) {
-    const padding = 25;
+    const mainPadding = 30;
     const sidePadding = 15;
     const candidates = [
-        { x: speakerHead.x + speakerHead.width / 2, y: speakerHead.y - bubbleH / 2 - padding },
-        { x: speakerHead.x + speakerHead.width + bubbleW / 2, y: speakerHead.y - bubbleH / 4 },
-        { x: speakerHead.x - bubbleW / 2, y: speakerHead.y - bubbleH / 4 },
+        // 1. Centered above head
+        { x: speakerHead.x + speakerHead.width / 2, y: speakerHead.y - bubbleH / 2 - mainPadding },
+        // 2. To the top-right
+        { x: speakerHead.x + speakerHead.width + bubbleW / 2 + sidePadding, y: speakerHead.y - bubbleH / 2 },
+        // 3. To the top-left
+        { x: speakerHead.x - bubbleW / 2 - sidePadding, y: speakerHead.y - bubbleH / 2 },
+        // 4. Further above head
+        { x: speakerHead.x + speakerHead.width / 2, y: speakerHead.y - bubbleH / 2 - mainPadding * 1.5 },
+        // 5. To the side, centered vertically with head
         { x: speakerHead.x + speakerHead.width + bubbleW / 2 + sidePadding, y: speakerHead.y + speakerHead.height / 2 },
         { x: speakerHead.x - bubbleW / 2 - sidePadding, y: speakerHead.y + speakerHead.height / 2 },
-        { x: speakerHead.x + speakerHead.width / 2, y: speakerHead.y - bubbleH - padding*2 },
     ];
 
     for (const pos of candidates) {
@@ -34,7 +45,14 @@ function findOptimalBubblePosition(
         let isColliding = false;
 
         for (const head of allHeadsInPanel) {
-            if (checkCollision(bubbleRect, head)) {
+            const headPadding = 10; // Add 10px safety margin around heads
+            const paddedHead = { 
+                x: head.x - headPadding, 
+                y: head.y - headPadding, 
+                width: head.width + headPadding * 2, 
+                height: head.height + headPadding * 2
+            };
+            if (checkCollision(bubbleRect, paddedHead)) {
                 isColliding = true;
                 break;
             }
@@ -145,25 +163,31 @@ const getCharacterHeadBounds = (params: CharacterParams) => {
     return { x, y, width, height };
 };
 
-const getCharacterMouthPos = (params: CharacterParams) => {
-    const { mouthYOffsetRatio, headHeight } = params;
-    const centerX = VIEWBOX_WIDTH_BASE / 2;
-    const headY = 120;
-    const calculatedMouthYOffset = (headHeight / 2) * (mouthYOffsetRatio / 100);
-    return { x: centerX, y: headY + calculatedMouthYOffset };
+const estimateTextWidth = (text: string, fontSize: number): number => {
+    let width = 0;
+    // This regex covers Hiragana, Katakana, CJK Unified Ideographs, and full-width forms
+    const cjkRegex = /[\u3040-\u30ff\u4e00-\u9faf\uff00-\uffef]/g;
+    const cjkChars = (text.match(cjkRegex) || []).length;
+    const otherChars = text.length - cjkChars;
+    // Heuristics: CJK chars are roughly square (width ~ fontSize * 1.05), others are narrower (width ~ fontSize * 0.6).
+    width += cjkChars * fontSize * 1.05;
+    width += otherChars * fontSize * 0.6;
+    return width;
 };
 
 const wrapText = (text: string, fontSize: number, maxWidth: number): string[] => {
     if (!text) return [];
-    const words = text.split(' ');
+    // CJK languages don't use spaces, so we need to be able to break after any character.
+    const isCjk = /[\u3040-\u30ff\u4e00-\u9faf\uff00-\uffef]/.test(text);
+    const words = isCjk ? text.split('') : text.split(' ');
     if (words.length === 0) return [];
     const lines: string[] = [];
     let currentLine = words[0];
-    const avgCharWidth = fontSize * 0.7;
     for (let i = 1; i < words.length; i++) {
         const word = words[i];
-        const prospectiveLine = currentLine + " " + word;
-        if (prospectiveLine.length * avgCharWidth > maxWidth) {
+        const separator = isCjk ? '' : ' ';
+        const prospectiveLine = currentLine + separator + word;
+        if (estimateTextWidth(prospectiveLine, fontSize) > maxWidth) {
             lines.push(currentLine);
             currentLine = word;
         } else {
@@ -205,13 +229,13 @@ const calculatePanelTransform = (panel: ComicPanelData, pW: number, pH: number) 
         }
         
         const localWidth = Math.max(params.headWidth, params.torsoWidth);
-        const localMinX = 200 - localWidth / 2;
-        const localMaxX = 200 + localWidth / 2;
+        const localMinX = VIEWBOX_WIDTH_BASE / 2 - localWidth / 2;
+        const localMaxX = VIEWBOX_WIDTH_BASE / 2 + localWidth / 2;
 
-        const transformedMinX = (localMinX - 200) * scale + x + 200;
-        const transformedMaxX = (localMaxX - 200) * scale + x + 200;
-        const transformedMinY = (localMinY - 300) * scale + y + 300;
-        const transformedMaxY = (localMaxY - 300) * scale + y + 300;
+        const transformedMinX = (localMinX - VIEWBOX_WIDTH_BASE / 2) * scale + x;
+        const transformedMaxX = (localMaxX - VIEWBOX_WIDTH_BASE / 2) * scale + x;
+        const transformedMinY = (localMinY - VIEWBOX_HEIGHT / 2) * scale + y;
+        const transformedMaxY = (localMaxY - VIEWBOX_HEIGHT / 2) * scale + y;
 
         groupMinX = Math.min(groupMinX, transformedMinX);
         groupMaxX = Math.max(groupMaxX, transformedMaxX);
@@ -277,8 +301,8 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
     const getAbsoluteHeadBounds = (char: CharacterInstance) => {
         const headBoundsLocal = getCharacterHeadBounds(char.params);
         const getTransformedLocalPoint = (px: number, py: number) => ({
-            x: ((px - 200) * char.scale) + char.x + 200,
-            y: ((py - 300) * char.scale) + char.y + 300
+            x: ((px - VIEWBOX_WIDTH_BASE / 2) * char.scale) + char.x,
+            y: ((py - VIEWBOX_HEIGHT / 2) * char.scale) + char.y
         });
         const headTopLeft = getTransformedLocalPoint(headBoundsLocal.x, headBoundsLocal.y);
         const headBottomRight = getTransformedLocalPoint(headBoundsLocal.x + headBoundsLocal.width, headBoundsLocal.y + headBoundsLocal.height);
@@ -299,7 +323,7 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
       if (!speaker) return null;
 
       const speakerHeadBounds = allHeadBoundsInPanel[speakerIndexInPanel];
-      const maxBubbleWidth = Math.min(180, pW * 0.7);
+      const maxBubbleWidth = Math.min(250, pW * 0.85);
       
       const FONT_SCALE_FACTOR = 40;
       const textLength = dialogue.text.length;
@@ -309,21 +333,15 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
       
       const textLines = wrapText(dialogue.text.toUpperCase(), dynamicFontSize, maxBubbleWidth - 20);
       const textHeight = textLines.length * dynamicFontSize * 1.2;
-      const bubbleWidth = Math.min(maxBubbleWidth, Math.max(80, textLines.reduce((max, line) => Math.max(max, line.length * dynamicFontSize * 0.7), 0) + 20));
+      const bubbleWidth = Math.min(maxBubbleWidth, Math.max(80, textLines.reduce((max, line) => Math.max(max, estimateTextWidth(line, dynamicFontSize)), 0) + 20));
       const bubbleHeight = textHeight + 20;
 
       const { bubbleX, bubbleY } = findOptimalBubblePosition(speakerHeadBounds, bubbleWidth, bubbleHeight, allHeadBoundsInPanel, placedBubbleRects);
       
       const bubbleRect = { x: bubbleX - bubbleWidth / 2, y: bubbleY - bubbleHeight / 2, width: bubbleWidth, height: bubbleHeight };
       placedBubbleRects.push(bubbleRect);
-      
-      const mouthPosInCanvas = getCharacterMouthPos(speaker.params);
-      const finalMouthPosLocal = {
-          x: ((mouthPosInCanvas.x - 200) * speaker.scale) + speaker.x + 200,
-          y: ((mouthPosInCanvas.y - 300) * speaker.scale) + speaker.y + 300
-      };
 
-      const tailTip = transformPointToAbsolute(finalMouthPosLocal);
+      const tailTip = getClosestPointOnRect({ x: bubbleX, y: bubbleY }, speakerHeadBounds);
       const bubblePath = createBubblePathWithTail(bubbleRect, tailTip);
 
       return { key: `dialogue-${instanceKey}-${i}`, bubblePath, bubbleX, bubbleY, textHeight, dynamicFontSize, textLines };

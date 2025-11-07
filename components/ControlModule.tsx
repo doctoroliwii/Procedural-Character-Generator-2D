@@ -9,9 +9,10 @@ interface ControlModuleProps {
   onClose: () => void;
   onPositionChange: (position: { x: number; y: number }) => void;
   onFocus: () => void;
+  wide?: boolean;
 }
 
-const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialPosition, zIndex, onClose, onPositionChange, onFocus }) => {
+const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialPosition, zIndex, onClose, onPositionChange, onFocus, wide = false }) => {
   const [isDragging, setIsDragging] = useState(false);
   const positionRef = useRef(initialPosition);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
@@ -47,7 +48,7 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     // Prevent dragging when clicking on form elements inside the panel
-    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, label')) {
+    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, label, textarea, select')) {
         return;
     }
     
@@ -85,7 +86,7 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
   return (
     <div
       ref={nodeRef}
-      className="absolute top-0 left-0 bg-gray-50/90 backdrop-blur-sm border border-gray-300 rounded-lg shadow-2xl flex flex-col w-56 pointer-events-auto"
+      className={`absolute top-0 left-0 bg-gray-50/90 backdrop-blur-sm border border-gray-300 rounded-lg shadow-2xl flex flex-col pointer-events-auto ${wide ? 'w-96' : 'w-56'}`}
       style={{
         zIndex: zIndex,
         cursor: isDragging ? 'grabbing' : 'default',
@@ -106,7 +107,7 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
           <CloseIcon className="w-4 h-4" />
         </button>
       </div>
-      <div className="p-3 overflow-y-auto">
+      <div className="p-3 overflow-y-auto" style={{ maxHeight: '70vh' }}>
         {children}
       </div>
     </div>
