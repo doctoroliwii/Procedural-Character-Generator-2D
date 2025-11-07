@@ -200,7 +200,7 @@ const wrapText = (text: string, fontSize: number, maxWidth: number): string[] =>
 // --- END HELPER FUNCTIONS ---
 
 const VIEWBOX_WIDTH_BASE = 400;
-const VIEWBOX_HEIGHT = 600;
+const VIEWBOX_HEIGHT = 700;
 
 const calculatePanelTransform = (panel: ComicPanelData, pW: number, pH: number) => {
     const { characters, shotType } = panel;

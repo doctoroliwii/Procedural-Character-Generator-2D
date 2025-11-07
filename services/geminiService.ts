@@ -220,8 +220,9 @@ export const generateFullCharacterProfile = async (
     ${loreContext}
 
     TAREA: Completa el siguiente perfil de personaje.
-    - Mantén todos los datos que ya existen. NO los sobrescribas.
     - Rellena todos los campos que estén vacíos (indicados con "" o un objeto vacío).
+    - IMPORTANTE: Si el campo 'name' es 'New Character' o está vacío, genera un nombre nuevo y creativo para el personaje.
+    - Mantén cualquier otro dato que ya exista y no esté vacío. NO lo sobrescribas.
     - Asegúrate de que toda la información sea coherente entre sí y con el lore del mundo si se proporciona.
     - El resultado debe ser un objeto JSON completo y válido.
 

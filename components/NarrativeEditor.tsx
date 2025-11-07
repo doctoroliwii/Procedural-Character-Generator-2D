@@ -20,17 +20,25 @@ type MainTab = 'lore' | 'story';
 type LoreSubTab = 'core' | 'locations';
 type StorySubTab = 'premise' | 'plot';
 
+const LORE_PRESETS_STORAGE_KEY = 'universe-lore-presets';
+
+interface LorePreset {
+    name: string;
+    lore: Lore;
+}
+
+
 // --- UI Components ---
 
 const MainTabButton = ({ tabName, label, activeTab, setActiveTab }: { tabName: MainTab, label: string, activeTab: MainTab, setActiveTab: (tab: MainTab) => void}) => (
     <button
         onClick={() => setActiveTab(tabName)}
-        className={`flex-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors duration-200 focus:outline-none ${activeTab === tabName ? 'border-sky-500 text-sky-600 bg-white' : 'border-transparent text-gray-500 hover:bg-gray-200/50 hover:text-gray-700'}`}
+        className={`flex-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors duration-200 focus:outline-none ${activeTab === tabName ? 'border-red-500 text-red-600 bg-white' : 'border-transparent text-[#8C5A3A] hover:bg-[#FDEFE2]/50 hover:text-[#593A2D]'}`}
     >{label}</button>
 );
 
 const SubTabButton = ({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) => (
-    <button onClick={onClick} className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-sky-500 text-white shadow-sm' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+    <button onClick={onClick} className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-red-500 text-white shadow-sm' : 'bg-[#FDEFE2] text-[#8C5A3A] hover:bg-[#D6A27E]'}`}>
         {label}
     </button>
 );
@@ -45,21 +53,21 @@ const TextArea = ({ label, value, onChange, onBlur, rows=3, onGenerate, isGenera
     isGenerating?: boolean;
 }) => (
     <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+        <label className="block text-xs font-semibold text-[#8C5A3A] mb-1">{label}</label>
         <div className="relative">
             <textarea 
                 value={value || ''} 
                 onChange={e => onChange(e.target.value)} 
                 onBlur={onBlur} 
                 rows={rows} 
-                className="w-full p-2 border border-gray-300 rounded-md text-sm bg-gray-50 focus:bg-white focus:ring-1 focus:ring-sky-500 transition" 
+                className="w-full p-2 border border-[#FDEFE2] rounded-md text-sm bg-[#FFFBF7] focus:bg-white focus:ring-1 focus:ring-red-500 transition" 
                 style={{ paddingRight: onGenerate ? '2.5rem' : '0.5rem' }}
             />
              {onGenerate && (
                 <button
                     onClick={onGenerate}
                     disabled={isGenerating}
-                    className="absolute top-1.5 right-1.5 p-1 bg-sky-100 text-sky-600 rounded-full hover:bg-sky-200 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-wait transition-colors"
+                    className="absolute top-1.5 right-1.5 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 disabled:bg-[#FDEFE2] disabled:text-[#D6A27E] disabled:cursor-wait transition-colors"
                     aria-label={`Generate ${label}`}
                     title={`Generate ${label}`}
                 >
@@ -79,21 +87,21 @@ const TextInput = ({ label, value, onChange, onBlur, onGenerate, isGenerating }:
     isGenerating?: boolean
 }) => (
      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+        <label className="block text-xs font-semibold text-[#8C5A3A] mb-1">{label}</label>
         <div className="relative">
             <input 
                 type="text" 
                 value={value || ''} 
                 onChange={e => onChange(e.target.value)} 
                 onBlur={onBlur} 
-                className="w-full p-2 border border-gray-300 rounded-md text-sm bg-gray-50 focus:bg-white focus:ring-1 focus:ring-sky-500 transition" 
+                className="w-full p-2 border border-[#FDEFE2] rounded-md text-sm bg-[#FFFBF7] focus:bg-white focus:ring-1 focus:ring-red-500 transition" 
                 style={{ paddingRight: onGenerate ? '2.5rem' : '0.5rem' }}
             />
             {onGenerate && (
                  <button
                     onClick={onGenerate}
                     disabled={isGenerating}
-                    className="absolute top-1/2 -translate-y-1/2 right-1.5 p-1 bg-sky-100 text-sky-600 rounded-full hover:bg-sky-200 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-wait transition-colors"
+                    className="absolute top-1/2 -translate-y-1/2 right-1.5 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 disabled:bg-[#FDEFE2] disabled:text-[#D6A27E] disabled:cursor-wait transition-colors"
                     aria-label={`Generate ${label}`}
                     title={`Generate ${label}`}
                 >
@@ -111,15 +119,27 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
     const [isLoading, setIsLoading] = useState<string | null>(null);
     const [isFieldLoading, setIsFieldLoading] = useState<Set<string>>(new Set());
 
-    // Local state for forms
     const [localLore, setLocalLore] = useState(lore);
     const [localStory, setLocalStory] = useState(story);
+    
+    // --- Preset State ---
+    const [lorePresets, setLorePresets] = useState<LorePreset[]>([]);
+    const [showLorePresets, setShowLorePresets] = useState(false);
+    const [isNamingLorePreset, setIsNamingLorePreset] = useState(false);
+    const [lorePresetNameInput, setLorePresetNameInput] = useState('');
 
-    // Sync props to local state
     useEffect(() => { setLocalLore(lore); }, [lore]);
     useEffect(() => { setLocalStory(story); }, [story]);
+    
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem(LORE_PRESETS_STORAGE_KEY);
+            if (stored) {
+                setLorePresets(JSON.parse(stored));
+            }
+        } catch (e) { console.error("Failed to load lore presets", e); }
+    }, []);
 
-    // Handlers to sync local state back to parent on blur or action
     const syncStateToParent = useCallback(() => {
         if (JSON.stringify(localLore) !== JSON.stringify(lore)) onLoreChange(localLore);
         if (JSON.stringify(localStory) !== JSON.stringify(story)) onStoryChange(localStory);
@@ -134,6 +154,66 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
             setIsLoading(null);
         }
     }
+    
+    // --- Preset Handlers ---
+    const handleInitiateSaveLorePreset = () => {
+        if (!localLore) {
+            alert("No universe data to save.");
+            return;
+        }
+        setIsNamingLorePreset(true);
+        setLorePresetNameInput('');
+        setShowLorePresets(false);
+    };
+
+    const handleConfirmSaveLorePreset = useCallback(() => {
+        if (!lorePresetNameInput.trim()) {
+            alert("Please enter a name for the preset.");
+            return;
+        }
+        if (!localLore) {
+            alert("No universe data to save.");
+            return;
+        }
+
+        const presetName = lorePresetNameInput.trim();
+        const newPreset: LorePreset = { name: presetName, lore: localLore };
+        
+        setLorePresets(prev => {
+            const existingIndex = prev.findIndex(p => p.name.toLowerCase() === presetName.toLowerCase());
+            const newPresets = [...prev];
+            if (existingIndex > -1) {
+                newPresets[existingIndex] = newPreset;
+            } else {
+                newPresets.push(newPreset);
+            }
+            try {
+                const sorted = newPresets.sort((a,b) => a.name.localeCompare(b.name));
+                localStorage.setItem(LORE_PRESETS_STORAGE_KEY, JSON.stringify(sorted));
+                return sorted;
+            } catch (error) { console.error("Failed to save lore presets", error); return prev; }
+        });
+
+        setIsNamingLorePreset(false);
+        setLorePresetNameInput('');
+    }, [lorePresetNameInput, localLore]);
+    
+    const handleLoadLorePreset = useCallback((presetLore: Lore) => {
+        setLocalLore(presetLore);
+        onLoreChange(presetLore); // Also update parent
+        setShowLorePresets(false);
+    }, [onLoreChange]);
+    
+    const handleDeleteLorePreset = useCallback((presetName: string) => {
+        if (!confirm(`Are you sure you want to delete the universe preset "${presetName}"?`)) return;
+        setLorePresets(prev => {
+            const newPresets = prev.filter(p => p.name !== presetName);
+            try { localStorage.setItem(LORE_PRESETS_STORAGE_KEY, JSON.stringify(newPresets)); } 
+            catch (error) { console.error("Failed to delete lore preset", error); }
+            return newPresets;
+        });
+    }, []);
+
 
     const handleGenerateField = useCallback(async (field: string) => {
         setApiError(null);
@@ -153,7 +233,7 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
             console.error(`Error generating for field ${field}:`, error);
             const errorMessage = error.message || String(error);
             if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-                setApiError('You have exceeded your API quota. Please <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline font-semibold">check your plan and billing details</a>. You can monitor your usage <a href="https://ai.dev/usage?tab=rate-limit" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline font-semibold">here</a>.');
+                setApiError('You have exceeded your API quota. Please <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener noreferrer" class="text-red-600 hover:underline font-semibold">check your plan and billing details</a>. You can monitor your usage <a href="https://ai.dev/usage?tab=rate-limit" target="_blank" rel="noopener noreferrer" class="text-red-600 hover:underline font-semibold">here</a>.');
             } else {
                 setApiError('Failed to call the Gemini API. Please try again.');
             }
@@ -166,10 +246,9 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
         }
     }, [localLore, localStory, characterProfiles, setApiError]);
 
-    // --- RENDER LOGIC ---
     return (
         <div className="flex flex-col h-full bg-white">
-            <div className="flex border-b border-gray-300 bg-gray-100/80">
+            <div className="flex border-b border-[#FDEFE2] bg-[#FDEFE2]/80">
                 <MainTabButton tabName="lore" label="Universo" activeTab={activeTab} setActiveTab={setActiveTab} />
                 <MainTabButton tabName="story" label="Historia" activeTab={activeTab} setActiveTab={setActiveTab} />
             </div>
@@ -178,52 +257,62 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
                 {activeTab === 'lore' && (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-lg text-gray-800">Universo (Lore)</h3>
-                            <button onClick={() => handleGenerate('lore', { genreSuggestion: localLore?.genre })} disabled={!!isLoading} className="px-3 py-1.5 text-xs font-semibold bg-sky-500 text-white rounded-md hover:bg-sky-600 disabled:bg-gray-400 transition">{isLoading === 'lore' ? '...' : '🎲 Randomizar'}</button>
+                            <h3 className="font-bold text-lg text-[#593A2D]">Universo (Lore)</h3>
+                            <button onClick={() => handleGenerate('lore', { genreSuggestion: localLore?.genre })} disabled={!!isLoading} className="px-3 py-1.5 text-xs font-semibold bg-red-500 text-white rounded-md hover:bg-red-600 disabled:bg-[#D6A27E] transition">{isLoading === 'lore' ? '...' : '🎲 Randomizar'}</button>
                         </div>
-                        <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                            <button onClick={handleInitiateSaveLorePreset} className="w-full px-3 py-2 text-sm font-semibold bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"> Guardar Universo </button>
+                            <button onClick={() => { setShowLorePresets(s => !s); setIsNamingLorePreset(false); }} className="w-full px-3 py-2 text-sm font-semibold bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"> {showLorePresets ? 'Ocultar' : 'Cargar Universo'} </button>
+                        </div>
+
+                        {isNamingLorePreset && ( <div className="p-3 bg-[#FFFBF7] rounded-lg border border-[#FDEFE2] space-y-2"> <h4 className="font-semibold text-sm text-[#8C5A3A]">Guardar nuevo universo</h4> <input type="text" value={lorePresetNameInput} onChange={e => setLorePresetNameInput(e.target.value)} placeholder="Nombre del preset..." className="w-full p-2 border border-[#FDEFE2] rounded-md text-sm bg-white focus:ring-1 focus:ring-red-500" autoFocus /> <div className="flex gap-2"> <button onClick={handleConfirmSaveLorePreset} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-green-500 text-white rounded-md hover:bg-green-600">Confirmar</button> <button onClick={() => setIsNamingLorePreset(false)} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancelar</button> </div> </div> )}
+
+                        {showLorePresets && ( <div className="p-3 bg-[#FFFBF7] rounded-lg border border-[#FDEFE2] space-y-2"> <h4 className="font-semibold text-sm text-[#8C5A3A]">Universos Guardados</h4> {lorePresets.length === 0 ? ( <p className="text-xs text-center text-[#8C5A3A] py-2">No hay universos guardados.</p> ) : ( <div className="max-h-32 overflow-y-auto space-y-1 pr-1"> {lorePresets.map(preset => ( <div key={preset.name} className="flex items-center justify-between p-1.5 rounded-lg bg-[#FDEFE2] group"> <button onClick={() => handleLoadLorePreset(preset.lore)} className="text-left text-sm text-[#593A2D] flex-grow hover:text-red-600">{preset.name}</button> <button onClick={() => handleDeleteLorePreset(preset.name)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-red-100" title={`Eliminar ${preset.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg> </button> </div> ))} </div> )} </div> )}
+                        
+                        <div className="flex gap-2 p-1 bg-[#FDEFE2] rounded-lg">
                             <SubTabButton label="Núcleo" active={activeSubTabs.lore === 'core'} onClick={() => setActiveSubTabs(s => ({...s, lore: 'core'}))} />
                             <SubTabButton label="Lugares" active={activeSubTabs.lore === 'locations'} onClick={() => setActiveSubTabs(s => ({...s, lore: 'locations'}))} />
                         </div>
-                        {activeSubTabs.lore === 'core' && <div className="space-y-3 p-3 bg-gray-50 rounded-b-lg">
+                        {activeSubTabs.lore === 'core' && <div className="space-y-3 p-3 bg-[#FFFBF7] rounded-b-lg">
                             <TextInput label="Género" value={localLore?.genre} onChange={v => setLocalLore(l => ({...(l!), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.genre')} isGenerating={isFieldLoading.has('lore.genre')} />
                             <TextArea label="Reglas del Mundo" value={localLore?.rules} onChange={v => setLocalLore(l => ({...(l!), rules: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.rules')} isGenerating={isFieldLoading.has('lore.rules')} />
                             <TextArea label="Historia del Mundo" value={localLore?.history} onChange={v => setLocalLore(l => ({...(l!), history: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.history')} isGenerating={isFieldLoading.has('lore.history')} />
                         </div>}
-                        {activeSubTabs.lore === 'locations' && <div className="p-3 bg-gray-50 rounded-b-lg text-sm text-gray-500">Próximamente: Editor de lugares.</div>}
+                        {activeSubTabs.lore === 'locations' && <div className="p-3 bg-[#FFFBF7] rounded-b-lg text-sm text-[#8C5A3A]">Próximamente: Editor de lugares.</div>}
                     </div>
                 )}
                 
                 {activeTab === 'story' && (
                      <div className="space-y-4">
-                        <h3 className="font-bold text-lg text-gray-800">Historia</h3>
-                        <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+                        <h3 className="font-bold text-lg text-[#593A2D]">Historia</h3>
+                        <div className="flex gap-2 p-1 bg-[#FDEFE2] rounded-lg">
                             <SubTabButton label="Premisa" active={activeSubTabs.story === 'premise'} onClick={() => setActiveSubTabs(s => ({...s, story: 'premise'}))} />
                             <SubTabButton label="Trama" active={activeSubTabs.story === 'plot'} onClick={() => setActiveSubTabs(s => ({...s, story: 'plot'}))} />
                         </div>
 
-                        {activeSubTabs.story === 'premise' && <div className="space-y-4 p-3 bg-gray-50 rounded-b-lg">
+                        {activeSubTabs.story === 'premise' && <div className="space-y-4 p-3 bg-[#FFFBF7] rounded-b-lg">
                             <TextInput label="Género de la Historia" value={localStory?.genre} onChange={v => setLocalStory(s => ({...(s || { characterProfileIds:[], storyCircle:[] }), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('story.genre')} isGenerating={isFieldLoading.has('story.genre')}/>
                             <TextArea label="Qué está en juego (Stakes)" value={localStory?.stakes} onChange={v => setLocalStory(s => ({...(s || { characterProfileIds:[], storyCircle:[] }), stakes: v}))} onBlur={syncStateToParent} rows={2} onGenerate={() => handleGenerateField('story.stakes')} isGenerating={isFieldLoading.has('story.stakes')}/>
                             <div className="space-y-2">
-                                <h4 className="font-semibold text-xs text-gray-600">Personajes en la Historia</h4>
+                                <h4 className="font-semibold text-xs text-[#8C5A3A]">Personajes en la Historia</h4>
                                 {characterProfiles.length === 0 ? (
-                                    <p className="text-xs text-gray-500">Crea personajes en el <button onClick={() => togglePanel('CharacterEditor')} className="text-sky-600 hover:underline">Editor de Personajes</button> para poder añadirlos a la historia.</p>
+                                    <p className="text-xs text-[#8C5A3A]">Crea personajes en el <button onClick={() => togglePanel('CharacterEditor')} className="text-red-600 hover:underline">Editor de Personajes</button> para poder añadirlos a la historia.</p>
                                 ): characterProfiles.map(c => (
                                     <div key={c.id} className="flex items-center gap-2"><input type="checkbox" id={`char-check-${c.id}`} checked={localStory?.characterProfileIds.includes(c.id) || false} onChange={e => {
                                         const ids = localStory?.characterProfileIds || [];
                                         const newIds = e.target.checked ? [...ids, c.id] : ids.filter(id => id !== c.id);
                                         setLocalStory(s => ({...(s || { genre: '', stakes: '', storyCircle: [] }), characterProfileIds: newIds}));
-                                    }} onBlur={syncStateToParent} className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500" /><label htmlFor={`char-check-${c.id}`} className="select-none text-sm">{c.name}</label></div>
+                                    }} onBlur={syncStateToParent} className="h-4 w-4 rounded border-[#FDEFE2] text-red-600 focus:ring-red-500" /><label htmlFor={`char-check-${c.id}`} className="select-none text-sm">{c.name}</label></div>
                                 ))}
                             </div>
-                            <button onClick={() => handleGenerate('story', { characterIds: localStory?.characterProfileIds, genre: localStory?.genre, stakes: localStory?.stakes })} disabled={!lore || (localStory?.characterProfileIds || []).length === 0 || !!isLoading} className="w-full bg-sky-500 text-white font-semibold py-2 rounded-md hover:bg-sky-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition">{isLoading === 'story' ? 'Generando...' : '🎲 Generar Trama'}</button>
+                            <button onClick={() => handleGenerate('story', { characterIds: localStory?.characterProfileIds, genre: localStory?.genre, stakes: localStory?.stakes })} disabled={!lore || (localStory?.characterProfileIds || []).length === 0 || !!isLoading} className="w-full bg-red-500 text-white font-semibold py-2 rounded-md hover:bg-red-600 disabled:bg-[#D6A27E] disabled:cursor-not-allowed transition">{isLoading === 'story' ? 'Generando...' : '🎲 Generar Trama'}</button>
                         </div>}
 
-                        {activeSubTabs.story === 'plot' && <div className="p-3 bg-gray-50 rounded-b-lg">
+                        {activeSubTabs.story === 'plot' && <div className="p-3 bg-[#FFFBF7] rounded-b-lg">
                             {story?.storyCircle ? <div className="space-y-3">
-                                {story.storyCircle.sort((a,b) => a.step - b.step).map(s => <div key={s.step}><strong className="text-xs uppercase font-bold text-sky-700">{s.step}. {s.title}</strong><p className="text-sm text-gray-700 mt-1">{s.description}</p></div>)}
-                            </div> : <p className="text-sm text-center text-gray-500 py-4">Genere una premisa para ver la trama aquí.</p>}
+                                {story.storyCircle.sort((a,b) => a.step - b.step).map(s => <div key={s.step}><strong className="text-xs uppercase font-bold text-red-700">{s.step}. {s.title}</strong><p className="text-sm text-[#8C5A3A] mt-1">{s.description}</p></div>)}
+                            </div> : <p className="text-sm text-center text-[#8C5A3A] py-4">Genere una premisa para ver la trama aquí.</p>}
                         </div>}
                     </div>
                 )}

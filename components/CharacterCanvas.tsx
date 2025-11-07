@@ -11,14 +11,17 @@ interface CharacterCanvasProps {
   comicAspectRatio: '1:1' | '16:9' | '9:16';
   minComicFontSize: number;
   maxComicFontSize: number;
+  canvasResetToken: number;
+  onViewBoxChange: (viewBox: { x: number; y: number; width: number; height: number; }) => void;
 }
 
 
-const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize }) => {
+const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, canvasResetToken, onViewBoxChange }) => {
   const VIEWBOX_WIDTH_BASE = 400;
-  const VIEWBOX_HEIGHT = 600;
+  const VIEWBOX_HEIGHT = 700;
   
   const svgRef = useRef<SVGSVGElement>(null);
+  const characterGroupRef = useRef<SVGGElement>(null); // Ref for the character group
   const [cursorPos, setCursorPos] = useState({ x: VIEWBOX_WIDTH_BASE / 2, y: 120 });
   const [viewBox, setViewBox] = useState({ x: 0, y: 0, width: VIEWBOX_WIDTH_BASE, height: VIEWBOX_HEIGHT });
   const [isPanning, setIsPanning] = useState(false);
@@ -29,14 +32,76 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
   const canvasWidth = isComicMode
     ? (comicAspectRatio === '1:1' ? canvasHeight : comicAspectRatio === '16:9' ? canvasHeight * (16 / 9) : canvasHeight * (9 / 16))
     : VIEWBOX_WIDTH_BASE;
+  
+  useEffect(() => {
+    onViewBoxChange(viewBox);
+  }, [viewBox, onViewBoxChange]);
 
   useEffect(() => {
     if (isComicMode) {
+      // When in comic mode, the viewBox is fixed to the comic dimensions.
       setViewBox({ x: 0, y: 0, width: canvasWidth, height: canvasHeight });
-    } else {
-      setViewBox({ x: 0, y: 0, width: VIEWBOX_WIDTH_BASE, height: VIEWBOX_HEIGHT });
+      return;
     }
-  }, [isComicMode, canvasWidth, canvasHeight]);
+
+    // This part runs only when not in comic mode.
+    // It's triggered by canvasResetToken (new character) or when characters array is cleared.
+    if (characters.length === 0) {
+      // If no characters, reset to default view
+      setViewBox({ x: 0, y: 0, width: VIEWBOX_WIDTH_BASE, height: VIEWBOX_HEIGHT });
+      return;
+    }
+
+    // If there are characters (and we just got a reset token), calculate the optimal view.
+    const timer = setTimeout(() => {
+      if (characterGroupRef.current) {
+        const bbox = characterGroupRef.current.getBBox();
+        
+        if (bbox.width === 0 || bbox.height === 0 || !isFinite(bbox.width) || !isFinite(bbox.height)) {
+          console.warn("Invalid BBox calculated, falling back to default view.", bbox);
+          setViewBox({ x: 0, y: 0, width: VIEWBOX_WIDTH_BASE, height: VIEWBOX_HEIGHT });
+          return;
+        }
+
+        const margin = 0.15; // 15% margin
+        
+        const contentWidth = bbox.width * (1 + margin * 2);
+        const contentHeight = bbox.height * (1 + margin * 2);
+
+        const contentCenterX = bbox.x + bbox.width / 2;
+        const contentCenterY = bbox.y + bbox.height / 2;
+        
+        const canvasAspectRatio = VIEWBOX_WIDTH_BASE / VIEWBOX_HEIGHT;
+        const contentAspectRatio = contentWidth / contentHeight;
+
+        let newViewBoxWidth, newViewBoxHeight;
+
+        if (contentAspectRatio > canvasAspectRatio) {
+          newViewBoxWidth = contentWidth;
+          newViewBoxHeight = contentWidth / canvasAspectRatio;
+        } else {
+          newViewBoxHeight = contentHeight;
+          newViewBoxWidth = contentHeight * canvasAspectRatio;
+        }
+        
+        // The character <g> is translated by VIEWBOX_WIDTH_BASE/2, VIEWBOX_HEIGHT/2
+        const absoluteContentCenterX = contentCenterX + VIEWBOX_WIDTH_BASE / 2;
+        const absoluteContentCenterY = contentCenterY + VIEWBOX_HEIGHT / 2;
+
+        const newViewBoxX = absoluteContentCenterX - newViewBoxWidth / 2;
+        const newViewBoxY = absoluteContentCenterY - newViewBoxHeight / 2;
+
+        setViewBox({
+          x: newViewBoxX,
+          y: newViewBoxY,
+          width: newViewBoxWidth,
+          height: newViewBoxHeight
+        });
+      }
+    }, 50); // A small delay is important for the DOM to update.
+
+    return () => clearTimeout(timer);
+  }, [isComicMode, canvasWidth, canvasHeight, canvasResetToken, characters.length]);
 
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -145,15 +210,6 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
           <rect width="20" height="20" x="0" y="20" fill={backgroundOptions.color2} />
           <rect width="20" height="20" x="20" y="20" fill={backgroundOptions.color1} />
         </pattern>
-        <filter id="body-outline-filter" x="-20%" y="-20%" width="140%" height="140%">
-            <feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius={4 / 2} />
-            <feFlood floodColor={characters.length > 0 ? characters[0].params.outlineColor : '#5e6670'} result="colored" />
-            <feComposite in="colored" in2="dilated" operator="in" result="outline" />
-            <feMerge>
-                <feMergeNode in="outline" />
-                <feMergeNode in="SourceGraphic" />
-            </feMerge>
-        </filter>
       </defs>
       
       {isComicMode && comicPanels ? (
@@ -194,7 +250,7 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
         <>
             <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#checkerboard)" />
             {sortedCharacters.map((charInstance, index) => (
-                <g key={`char-${index}`} transform={`translate(${VIEWBOX_WIDTH_BASE/2}, ${VIEWBOX_HEIGHT/2})`}>
+                <g key={`char-${index}`} ref={characterGroupRef} transform={`translate(${VIEWBOX_WIDTH_BASE/2}, ${VIEWBOX_HEIGHT/2})`}>
                     <Character
                       key={`char-inst-${index}`}
                       charInstance={charInstance}
@@ -209,4 +265,4 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
   );
 };
 
-export default React.memo(CharacterCanvas);
+export default CharacterCanvas;

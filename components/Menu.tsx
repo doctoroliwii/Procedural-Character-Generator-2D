@@ -36,19 +36,18 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
         onClick={() => setIsOpen(!isOpen)}
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={(e) => {
-            // Check if the mouse is moving to the dropdown before closing
             if (e.relatedTarget instanceof Node && menuRef.current?.contains(e.relatedTarget)) {
                 return;
             }
             setIsOpen(false);
         }}
-        className={`px-3 py-1 text-sm font-medium rounded-md transition-colors duration-150 focus:outline-none select-none ${isOpen ? 'bg-sky-500 text-white' : 'text-gray-800 hover:bg-gray-400/50'}`}
+        className={`px-3 py-1 text-sm font-medium rounded-md transition-colors duration-150 focus:outline-none select-none ${isOpen ? 'bg-red-500 text-white' : 'text-[#593A2D] hover:bg-[#D6A27E]/50'}`}
       >
         {title}
       </button>
       {isOpen && (
         <div 
-            className="absolute top-full left-0 w-48 bg-gray-50/95 backdrop-blur-md rounded-md shadow-lg border border-gray-300 py-1 z-50"
+            className="absolute top-full left-0 w-48 bg-[#FFFBF7]/95 backdrop-blur-md rounded-md shadow-lg border border-[#FDEFE2] py-1 z-50"
             onMouseLeave={() => setIsOpen(false)}
         >
           {items.map(item => (
@@ -56,7 +55,7 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
               key={item.label}
               onClick={() => !item.disabled && handleItemClick(item.action)}
               disabled={item.disabled}
-              className="w-full text-left px-4 py-2 text-sm text-gray-800 hover:bg-sky-500 hover:text-white transition-colors duration-150 select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-800"
+              className="w-full text-left px-4 py-2 text-sm text-[#593A2D] hover:bg-red-500 hover:text-white transition-colors duration-150 select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[#593A2D]"
             >
               {item.label}
             </button>

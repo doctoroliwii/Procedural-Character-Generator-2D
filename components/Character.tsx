@@ -50,7 +50,7 @@ function createRoundedPolygonPath(points: {x: number, y: number}[], radius: numb
 
 
 const VIEWBOX_WIDTH_BASE = 400;
-const VIEWBOX_HEIGHT = 600;
+const VIEWBOX_HEIGHT = 700;
 
 const getEyeClipPathData = (params: CharacterParams) => {
       const { headHeight, eyeSizeRatio, eyeSpacingRatio, upperEyelidCoverage, lowerEyelidCoverage, eyeStyle, headWidth } = params;
@@ -111,6 +111,7 @@ const Character: React.FC<{
             headWidth, headHeight, headShape, headCornerRadius, triangleCornerRadius, eyeSizeRatio, eyeSpacingRatio, pupilSizeRatio, upperEyelidCoverage, lowerEyelidCoverage, eyeStyle, eyeTracking, eyelashes, eyelashCount, eyelashLength, eyelashAngle, mouthWidthRatio, mouthYOffsetRatio, mouthBend, eyebrowWidthRatio, eyebrowHeightRatio, eyebrowYOffsetRatio, eyebrowAngle, neckHeight, neckWidthRatio, torsoHeight, torsoWidth, torsoShape, torsoCornerRadius, pelvisHeight, pelvisWidthRatio, pelvisShape, armLength, lArmWidth, rArmWidth, lHandSize, rHandSize, legLength, lLegWidth, rLegWidth, lFootSize, rFootSize, lArmAngle, rArmAngle, lArmBend, rArmBend, lLegAngle, rLegAngle, lLegBend, rLegBend, hair, backHairWidthRatio, backHairHeightRatio, fringeHeightRatio, bodyColor, irisColor, outlineColor, pupilColor, hairColor, bodyOutlines, eyeOutlines
         } = params;
 
+        const filterId = `body-outline-filter-${instanceKey}`;
         const outlineWidth = 4;
         const centerX = VIEWBOX_WIDTH_BASE / 2;
         const headY = 120;
@@ -157,8 +158,37 @@ const Character: React.FC<{
         const { l: lHip, r: rHip } = getHipAttachment();
         const lShoulder = { x: centerX - shoulderXOffset, y: shoulderY }; const rShoulder = { x: centerX + shoulderXOffset, y: shoulderY };
         const createLimbPath = (start: {x: number, y: number}, length: number, angle: number, bend: number, dir: -1 | 1) => { const rad = angle * Math.PI / 180; const end = { x: start.x + dir * length * Math.sin(rad), y: start.y + length * Math.cos(rad) }; const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dx = end.x - start.x; const dy = end.y - start.y; const dist = Math.sqrt(dx * dx + dy * dy); const control = { x: mid.x, y: mid.y }; if (dist > 1e-6) { const perpDx = -dy / dist; const perpDy = dx / dist; control.x = mid.x + perpDx * bend; control.y = mid.y + perpDy * bend; } const path = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`; return { path, end, control }; };
-        const { path: lArmPath, end: lWrist } = createLimbPath(lShoulder, armLength, lArmAngle, lArmBend, -1); const { path: rArmPath, end: rWrist } = createLimbPath(rShoulder, armLength, rArmAngle, rArmBend, 1); const { path: lLegPath, end: lAnkle } = createLimbPath(lHip, legLength, lLegAngle, lLegBend, -1); const { path: rLegPath, end: rAnkle } = createLimbPath(rHip, legLength, rLegAngle, rLegBend, 1);
-        const lFootGroundY = lAnkle.y + lLegWidth / 2; const rFootGroundY = rAnkle.y + rLegWidth / 2; const lFootHeight = Math.max(lFootSize, lLegWidth); const rFootHeight = Math.max(rFootSize, rLegWidth); const lFootWidth = Math.min(lFootSize * 2, lLegWidth * 3); const rFootWidth = Math.min(rFootSize * 2, rLegWidth * 3); const lHeelX = lAnkle.x; const lFootPath = `M ${lHeelX} ${lFootGroundY} L ${lHeelX - lFootWidth} ${lFootGroundY} A ${lFootWidth / 2} ${lFootHeight} 0 0 1 ${lHeelX} ${lFootGroundY} Z`; const rHeelX = rAnkle.x; const rFootPath = `M ${rHeelX} ${rFootGroundY} L ${rHeelX + rFootWidth} ${rFootGroundY} A ${rFootWidth / 2} ${rFootHeight} 0 0 0 ${rHeelX} ${rFootGroundY} Z`;
+        
+        // --- Dynamic Collision Correction for Feet ---
+        let finalLLegAngle = lLegAngle;
+        let finalRLegAngle = rLegAngle;
+        const maxIterations = 90;
+        const footMargin = 5;
+
+        for (let i = 0; i < maxIterations; i++) {
+            const { end: tempLAnkle } = createLimbPath(lHip, legLength, finalLLegAngle, lLegBend, -1);
+            const { end: tempRAnkle } = createLimbPath(rHip, legLength, finalRLegAngle, rLegBend, 1);
+            
+            // The rightmost edge of the left leg/foot area, considering leg width
+            const leftInnerEdge = tempLAnkle.x + lLegWidth / 2;
+            // The leftmost edge of the right leg/foot area, considering leg width
+            const rightInnerEdge = tempRAnkle.x - rLegWidth / 2;
+            
+            // Check if the gap between them is smaller than the required margin
+            const collision = leftInnerEdge + footMargin > rightInnerEdge;
+
+            if (collision) {
+                // If a collision is detected, push both legs outwards by one degree
+                finalLLegAngle = Math.min(45, finalLLegAngle + 1);
+                finalRLegAngle = Math.min(45, finalRLegAngle + 1);
+            } else {
+                // If there's enough space, we're done
+                break;
+            }
+        }
+        
+        const { path: lArmPath, end: lWrist } = createLimbPath(lShoulder, armLength, lArmAngle, lArmBend, -1); const { path: rArmPath, end: rWrist } = createLimbPath(rShoulder, armLength, rArmAngle, rArmBend, 1); const { path: lLegPath, end: lAnkle } = createLimbPath(lHip, legLength, finalLLegAngle, lLegBend, -1); const { path: rLegPath, end: rAnkle } = createLimbPath(rHip, legLength, finalRLegAngle, rLegBend, 1);
+        const lFootGroundY = lAnkle.y + lLegWidth / 2; const rFootGroundY = rAnkle.y + rLegWidth / 2; const lFootHeight = Math.max(lFootSize, lLegWidth); const rFootHeight = Math.max(rFootSize, rLegWidth); const lFootWidth = Math.min(lFootSize * 2, lLegWidth * 3); const rFootWidth = Math.min(rFootSize * 2, rLegWidth * 3); const lHeelX = lAnkle.x; const lFootPath = `M ${lHeelX} ${lFootGroundY} L ${lHeelX - lFootWidth} ${lFootGroundY} A ${lFootWidth / 2} ${lFootHeight} 0 0 1 ${lHeelX} ${lFootGroundY} Z`; const rHeelX = rAnkle.x; const rFootPath = `M ${rHeelX} ${rFootGroundY} L ${rHeelX + rFootWidth} ${lFootGroundY} A ${rFootWidth / 2} ${rFootHeight} 0 0 0 ${rHeelX} ${lFootGroundY} Z`;
         const eyeYPos = headY; const leftEyeX = centerX - calculatedEyeSpacing; const rightEyeX = centerX + calculatedEyeSpacing; const eyeRy = calculatedEyeSize; const baseEyeRx = eyeRy * 0.85; const eyeRx = Math.min(baseEyeRx, calculatedEyeSpacing); const irisRy = eyeRy * 0.7; const irisRx = eyeRx * 0.7; const pupilRy = calculatedPupilSize; const pupilRx = pupilRy * (eyeRx / eyeRy);
         
         const localCursorX = (localCursorPos.x - (VIEWBOX_WIDTH_BASE / 2 + charInstance.x)) / charInstance.scale + (VIEWBOX_WIDTH_BASE / 2);
@@ -175,11 +205,27 @@ const Character: React.FC<{
         let eyebrowY = eyeYPos - finalEyebrowYOffset; 
         const eyebrowTopPoint = eyebrowY - (calculatedEyebrowHeight / 2); 
         const headTopLimit = actualHeadTopY + (outlineWidth / 2); if (eyebrowTopPoint < headTopLimit) { eyebrowY = headTopLimit + (calculatedEyebrowHeight / 2); }
-        const mouthYPos = headY + calculatedMouthYOffset; const mouthCurvature = calculatedMouthWidth * 0.4 * (mouthBend / 100); const mouthPath = `M ${centerX - calculatedMouthWidth / 2} ${mouthYPos} Q ${centerX} ${mouthYPos + mouthCurvature} ${centerX + calculatedMouthWidth / 2} ${mouthYPos}`;
+
+        // --- Dynamic Collision Correction for Mouth ---
+        let finalMouthWidth = calculatedMouthWidth;
+        const mouthYPos = headY + calculatedMouthYOffset;
+        const mouthMargin = 10;
+        let headWidthAtMouthY = headWidth;
+        if (headShape === 'triangle') {
+            const headTop = headY - headHeight / 2;
+            const yRel = mouthYPos - headTop;
+            headWidthAtMouthY = headHeight > 0 ? headWidth * (yRel / headHeight) : 0;
+        }
+        if (finalMouthWidth > headWidthAtMouthY - mouthMargin) {
+            finalMouthWidth = Math.max(0, headWidthAtMouthY - mouthMargin);
+        }
+        const mouthCurvature = finalMouthWidth * 0.4 * (mouthBend / 100);
+        const mouthPath = `M ${centerX - finalMouthWidth / 2} ${mouthYPos} Q ${centerX} ${mouthYPos + mouthCurvature} ${centerX + finalMouthWidth / 2} ${mouthYPos}`;
+
         const isWideTopHead = headShape === 'square' || headShape === 'inverted-triangle'; const hairAnchorY = isWideTopHead ? actualHeadTopY - 10 : actualHeadTopY; const hairWidthMultiplier = isWideTopHead ? 1.1 : 1.0;
         const calculatedBackHairWidth = headWidth * (backHairWidthRatio / 100) * hairWidthMultiplier; const backHairRx = calculatedBackHairWidth / 2; const backHairRy = headHeight * (backHairHeightRatio / 100); const backHairCenterY = hairAnchorY + backHairRy; const backHairPath = `M ${centerX - backHairRx}, ${backHairCenterY} A ${backHairRx} ${backHairRy} 0 0 1 ${centerX + backHairRx}, ${backHairCenterY} Z`;
-        const fringeHeight = headHeight * (fringeHeightRatio / 100); let fringePath: string = ''; let fringeBottomOutlinePath: string = '';
-        if (fringeHeight > 0.1) { const fringeRy = fringeHeight; const fringeCenterY = hairAnchorY + fringeHeight; if (headShape === 'triangle' && headHeight > 0) { const headWidthAtFringeBottom = (fringeHeight / headHeight) * headWidth; const fringeRx = (headWidthAtFringeBottom / 2) + (outlineWidth / 2); const tipX = centerX; const tipY = hairAnchorY; const bottomLeftX = centerX - fringeRx; const bottomRightX = centerX + fringeRx; const bottomY = fringeCenterY; fringePath = `M ${tipX} ${tipY} L ${bottomLeftX} ${bottomY} L ${bottomRightX} ${bottomY} Z`; fringeBottomOutlinePath = `M ${bottomLeftX} ${bottomY} L ${bottomRightX} ${bottomY}`; } else { let fringeRx = (headWidth / 2) * hairWidthMultiplier + outlineWidth / 2; if (fringeRx > 0.1 && fringeRy > 0.1) { fringePath = `M ${centerX - fringeRx}, ${fringeCenterY} A ${fringeRx} ${fringeRy} 0 0 1 ${centerX + fringeRx}, ${fringeCenterY} Z`; fringeBottomOutlinePath = `M ${centerX - fringeRx}, ${fringeCenterY} L ${centerX + fringeRx}, ${fringeCenterY}`; } } }
+        const fringeHeight = headHeight * (fringeHeightRatio / 100); let fringePath: string = '';
+        if (fringeHeight > 0.1) { const fringeRy = fringeHeight; const fringeCenterY = hairAnchorY + fringeHeight; if (headShape === 'triangle' && headHeight > 0) { const headWidthAtFringeBottom = (fringeHeight / headHeight) * headWidth; const fringeRx = (headWidthAtFringeBottom / 2) + (outlineWidth / 2); const tipX = centerX; const tipY = hairAnchorY; const bottomLeftX = centerX - fringeRx; const bottomRightX = centerX + fringeRx; const bottomY = fringeCenterY; fringePath = `M ${tipX} ${tipY} L ${bottomLeftX} ${bottomY} L ${bottomRightX} ${bottomY} Z`; } else { let fringeRx = (headWidth / 2) * hairWidthMultiplier + outlineWidth / 2; if (fringeRx > 0.1 && fringeRy > 0.1) { fringePath = `M ${centerX - fringeRx}, ${fringeCenterY} A ${fringeRx} ${fringeRy} 0 0 1 ${centerX + fringeRx}, ${fringeCenterY} Z`; } } }
         const headTop = { x: centerX, y: headY - headHeight / 2 }; const headBottomLeft = { x: centerX - headWidth / 2, y: headY + headHeight / 2 }; const headBottomRight = { x: centerX + headWidth / 2, y: headY + headHeight / 2 }; const headTopLeft = { x: centerX - headWidth / 2, y: headY - headHeight / 2 }; const headTopRight = { x: centerX + headWidth / 2, y: headY - headHeight / 2 }; const headBottom = { x: centerX, y: headY + headHeight / 2 };
         const torsoCY = torsoTopY + torsoHeight / 2; const torsoTop = { x: centerX, y: torsoTopY }; const torsoBottomLeft = { x: centerX - torsoWidth / 2, y: torsoTopY + torsoHeight }; const torsoBottomRight = { x: centerX + torsoWidth / 2, y: torsoTopY + torsoHeight }; const torsoTopLeft = { x: centerX - torsoWidth / 2, y: torsoTopY }; const torsoTopRight = { x: centerX + torsoWidth / 2, y: torsoTopY }; const torsoBottom = { x: centerX, y: torsoTopY + torsoHeight };
         
@@ -187,7 +233,7 @@ const Character: React.FC<{
         const renderTorso = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; switch (torsoShape) { case 'circle': return <ellipse cx={centerX} cy={torsoCY} rx={torsoWidth / 2} ry={torsoHeight / 2} {...props} />; case 'square': return <rect x={centerX - torsoWidth/2} y={torsoTopY} width={torsoWidth} height={torsoWidth} rx={torsoCornerRadius} {...props} />; case 'triangle': return <path d={createRoundedPolygonPath([torsoTop, torsoBottomLeft, torsoBottomRight], triangleCornerRadius)} {...props} />; case 'inverted-triangle': return <path d={createRoundedPolygonPath([torsoTopLeft, torsoTopRight, torsoBottom], triangleCornerRadius)} {...props} />; default: return <rect x={centerX - torsoWidth/2} y={torsoTopY} width={torsoWidth} height={torsoHeight} rx={torsoCornerRadius} {...props} />; } };
         const renderNeck = () => { return <rect x={centerX - finalNeckWidth / 2} y={neckY} width={finalNeckWidth} height={neckConnectionY - neckY + 5} fill={bodyColor} rx={finalNeckWidth * 0.1} />; };
         const renderPelvis = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; if (torsoShape === 'inverted-triangle') { const topY = pelvisY; const bottomY = topY + params.pelvisHeight; const width = adjustedPelvisWidth; const cr = 15; const socketDepth = params.pelvisHeight * 0.5; let path = `M ${centerX - width / 2} ${topY + socketDepth}`; path += ` Q ${centerX} ${topY}, ${centerX + width / 2} ${topY + socketDepth}`; switch (pelvisShape) { case 'horizontal-oval': path += ` A ${width / 2} ${(bottomY - (topY + socketDepth)) / 2} 0 1 1 ${centerX - width / 2} ${topY + socketDepth}`; break; default: path += ` L ${centerX + width / 2} ${bottomY - cr}`; path += ` Q ${centerX + width / 2} ${bottomY}, ${centerX + width / 2 - cr} ${bottomY}`; path += ` L ${centerX - width / 2 + cr} ${bottomY}`; path += ` Q ${centerX - width / 2} ${bottomY}, ${centerX - width / 2} ${bottomY - cr}`; break; } path += ` Z`; return <path d={path.replace(/\s+/g, ' ').trim()} {...props} />; } const topWidth = getTorsoWidthAtY(junctionY); const bottomWidth = adjustedPelvisWidth; const pelvisBottomY = junctionY + params.pelvisHeight; const drawingJunctionY = junctionY - 1; let path = `M ${centerX - topWidth / 2} ${drawingJunctionY}`; path += ` L ${centerX - bottomWidth / 2} ${drawingJunctionY}`; const cr = 15; switch (pelvisShape) { case 'horizontal-oval': path += ` L ${centerX - bottomWidth / 2} ${pelvisBottomY - cr} A ${bottomWidth/2} ${cr} 0 0 0 ${centerX + bottomWidth / 2} ${pelvisBottomY - cr} L ${centerX + bottomWidth / 2} ${drawingJunctionY}`; break; default: path += ` L ${centerX - bottomWidth / 2} ${pelvisBottomY - cr}`; path += ` Q ${centerX - bottomWidth/2} ${pelvisBottomY}, ${centerX - bottomWidth/2 + cr} ${pelvisBottomY}`; path += ` L ${centerX + bottomWidth/2 - cr} ${pelvisBottomY}`; path += ` Q ${centerX + bottomWidth/2} ${pelvisBottomY}, ${centerX + bottomWidth/2} ${pelvisBottomY - cr}`; path += ` L ${centerX + bottomWidth / 2} ${drawingJunctionY}`; break; } path += ` L ${centerX + topWidth / 2} ${drawingJunctionY} Z`; return <path d={path.replace(/\s+/g, ' ').trim()} {...props} />; };
-        const renderEyelashes = (eyeX: number) => { if (!eyelashes || upperEyelidCoverage >= 95) return null; const lashes: React.ReactNode[] = []; const eyeTopY = eyeYPos - eyeRy; const isLeftEye = eyeX < centerX; const angleRad = (isLeftEye ? -eyelashAngle : eyelashAngle) * Math.PI / 180; const cosA = Math.cos(angleRad); const sinA = Math.sin(angleRad); if (eyeStyle === 'blocky') { const upperLidY = eyeTopY + (2 * eyeRy * (upperEyelidCoverage / 100) * 0.5); const y_term = (upperLidY - eyeYPos) / eyeRy; const x_offset_sq = Math.max(0, 1 - y_term * y_term); const x_offset = eyeRx * Math.sqrt(x_offset_sq); const startX = eyeX - x_offset; const endX = eyeX + x_offset; const totalWidth = endX - startX; const ratio_start = isLeftEye ? 0.0 : 1.0; const ratio_end = isLeftEye ? 0.4 : 0.6; for (let i = 0; i < eyelashCount; i++) { const step = eyelashCount > 1 ? i / (eyelashCount - 1) : 0.5; const ratio = ratio_start + step * (ratio_end - ratio_start); const lashStartX = startX + totalWidth * ratio; const lashStartY = upperLidY; const outwardDirection = (eyeX < centerX) ? -1 : 1; let vx, vy; if (outwardDirection === 1) { vx = ratio; vy = -1; } else { vx = -(1 - ratio); vy = -1; } let len = Math.sqrt(vx * vx + vy * vy); if (len > 0) { vx /= len; vy /= len; } const finalVx = vx * cosA - vy * sinA; const finalVy = vx * sinA + vy * cosA; const lashEndX = lashStartX + eyelashLength * finalVx; const lashEndY = lashStartY + eyelashLength * finalVy; lashes.push(<path key={i} d={`M ${lashStartX} ${lashStartY} L ${lashEndX} ${lashEndY}`} stroke={pupilColor} strokeWidth={1.5} strokeLinecap="round" />); } } else { const leftPointX = eyeX - eyeRx; const rightPointX = eyeX + eyeRx; const verticalCenterY = eyeYPos; const upperControlY = (eyeYPos - eyeRy) + (2 * eyeRy * upperEyelidCoverage) / 100; const p0 = { x: leftPointX, y: verticalCenterY }; const p1 = { x: eyeX, y: upperControlY }; const p2 = { x: rightPointX, y: verticalCenterY }; const t_start = isLeftEye ? 0.0 : 1.0; const t_end = isLeftEye ? 0.4 : 0.6; for (let i = 0; i < eyelashCount; i++) { const step = eyelashCount > 1 ? i / (eyelashCount - 1) : 0.5; const t = t_start + step * (t_end - t_start); const startX = (1 - t)**2 * p0.x + 2 * (1 - t) * t * p1.x + t**2 * p2.x; const startY = (1 - t)**2 * p0.y + 2 * (1 - t) * t * p1.y + t**2 * p2.y; const tx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x); const ty = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y); let nx = -ty, ny = tx; let len = Math.sqrt(nx**2 + ny**2); if (len > 0) { nx /= len; ny /= len; } if (ny > 0) { nx = -nx; ny = -ny; } const outwardDirection = eyeX < centerX ? -1 : 1; nx = nx + outwardDirection * 1.2; ny = ny - 0.2; len = Math.sqrt(nx * nx + ny * ny); if (len > 0) { nx /= len; ny /= len; } const finalNx = nx * cosA - ny * sinA; const finalNy = nx * sinA + ny * cosA; const endX = startX + eyelashLength * finalNx; const endY = startY + eyelashLength * finalNy; lashes.push(<path key={i} d={`M ${startX} ${startY} L ${endX} ${endY}`} stroke={pupilColor} strokeWidth={1.5} strokeLinecap="round" />); } } return <g>{lashes}</g>; };
+        const renderEyelashes = (eyeX: number) => { if (!eyelashes || upperEyelidCoverage >= 95) return null; const lashes: React.ReactNode[] = []; const eyeTopY = eyeYPos - eyeRy; const isLeftEye = eyeX < centerX; const angleRad = (isLeftEye ? -eyelashAngle : eyelashAngle) * Math.PI / 180; const cosA = Math.cos(angleRad); const sinA = Math.sin(angleRad); if (eyeStyle === 'blocky') { const upperLidY = eyeTopY + (2 * eyeRy * (upperEyelidCoverage / 100) * 0.5); const y_term = (upperLidY - eyeYPos) / eyeRy; const x_offset_sq = Math.max(0, 1 - y_term * y_term); const x_offset = eyeRx * Math.sqrt(x_offset_sq); const startX = eyeX - x_offset; const endX = eyeX + x_offset; const totalWidth = endX - startX; const ratio_start = isLeftEye ? 0.0 : 1.0; const ratio_end = isLeftEye ? 0.4 : 0.6; for (let i = 0; i < eyelashCount; i++) { const step = eyelashCount > 1 ? i / (eyelashCount - 1) : 0.5; const ratio = ratio_start + step * (ratio_end - ratio_start); const lashStartX = startX + totalWidth * ratio; const lashStartY = upperLidY; const outwardDirection = (eyeX < centerX) ? -1 : 1; let vx, vy; if (outwardDirection === 1) { vx = ratio; vy = -1; } else { vx = -(1 - ratio); vy = -1; } let len = Math.sqrt(vx * vx + vy * vy); if (len > 0) { vx /= len; vy /= len; } const finalVx = vx * cosA - vy * sinA; const finalVy = vx * sinA + vy * cosA; const lashEndX = lashStartX + eyelashLength * finalVx; const lashEndY = lashStartY + eyelashLength * finalVy; lashes.push(<path key={i} d={`M ${lashStartX} ${lashStartY} L ${lashEndX} ${lashEndY}`} stroke={outlineColor} strokeWidth={1.5} strokeLinecap="round" />); } } else { const leftPointX = eyeX - eyeRx; const rightPointX = eyeX + eyeRx; const verticalCenterY = eyeYPos; const upperControlY = (eyeYPos - eyeRy) + (2 * eyeRy * upperEyelidCoverage) / 100; const p0 = { x: leftPointX, y: verticalCenterY }; const p1 = { x: eyeX, y: upperControlY }; const p2 = { x: rightPointX, y: verticalCenterY }; const t_start = isLeftEye ? 0.0 : 1.0; const t_end = isLeftEye ? 0.4 : 0.6; for (let i = 0; i < eyelashCount; i++) { const step = eyelashCount > 1 ? i / (eyelashCount - 1) : 0.5; const t = t_start + step * (t_end - t_start); const startX = (1 - t)**2 * p0.x + 2 * (1 - t) * t * p1.x + t**2 * p2.x; const startY = (1 - t)**2 * p0.y + 2 * (1 - t) * t * p1.y + t**2 * p2.y; const tx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x); const ty = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y); let nx = -ty, ny = tx; let len = Math.sqrt(nx**2 + ny**2); if (len > 0) { nx /= len; ny /= len; } if (ny > 0) { nx = -nx; ny = -ny; } const outwardDirection = eyeX < centerX ? -1 : 1; nx = nx + outwardDirection * 1.2; ny = ny - 0.2; len = Math.sqrt(nx * nx + ny * ny); if (len > 0) { nx /= len; ny /= len; } const finalNx = nx * cosA - ny * sinA; const finalNy = nx * sinA + ny * cosA; const endX = startX + eyelashLength * finalNx; const endY = startY + eyelashLength * finalNy; lashes.push(<path key={i} d={`M ${startX} ${startY} L ${endX} ${endY}`} stroke={outlineColor} strokeWidth={1.5} strokeLinecap="round" />); } } return <g>{lashes}</g>; };
 
         const scaleX = charInstance.scale * (isFlipped ? -1 : 1);
         const scaleY = charInstance.scale;
@@ -198,9 +244,18 @@ const Character: React.FC<{
                     <defs>
                       <clipPath id={`leftEyeClip-${instanceKey}`}><path d={leftEyeClipPathD} /></clipPath>
                       <clipPath id={`rightEyeClip-${instanceKey}`}><path d={rightEyeClipPathD} /></clipPath>
+                      <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
+                          <feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius="2" />
+                          <feFlood floodColor={outlineColor} result="colored" />
+                          <feComposite in="colored" in2="dilated" operator="in" result="outline" />
+                          <feMerge>
+                              <feMergeNode in="outline" />
+                              <feMergeNode in="SourceGraphic" />
+                          </feMerge>
+                      </filter>
                     </defs>
-                    {hair && (<g filter={bodyOutlines ? `url(#body-outline-filter)` : 'none'}><path d={backHairPath} fill={hairColor} /></g>)}
-                    <g filter={bodyOutlines ? `url(#body-outline-filter)` : 'none'}>
+                    {hair && (<g filter={bodyOutlines ? `url(#${filterId})` : 'none'}><path d={backHairPath} fill={hairColor} /></g>)}
+                    <g filter={bodyOutlines ? `url(#${filterId})` : 'none'}>
                         <path d={lFootPath} fill={bodyColor} /> 
                         <path d={rFootPath} fill={bodyColor} /> 
                         <circle cx={lHip.x} cy={lHip.y} r={params.lLegWidth / 2 * 1.6} fill={bodyColor} />
@@ -218,10 +273,10 @@ const Character: React.FC<{
                       <g><g clipPath={`url(#rightEyeClip-${instanceKey})`}><ellipse cx={rightEyeX} cy={eyeYPos} rx={eyeRx} ry={eyeRy} fill="white" /><ellipse cx={rightEyeX + rightPupilOffset.x} cy={eyeYPos + rightPupilOffset.y - eyelidCompensationY} rx={irisRx} ry={irisRy} fill={irisColor} /><ellipse cx={rightEyeX + rightPupilOffset.x} cy={eyeYPos + rightPupilOffset.y - eyelidCompensationY} rx={pupilRx} ry={pupilRy} fill={pupilColor} /><circle cx={rightEyeX + finalGlintOffsetX + rightPupilOffset.x * 0.5} cy={eyeYPos - glintOffsetY + rightPupilOffset.y * 0.5 - eyelidCompensationY} r={glintRadius} fill="white" /></g>{eyeOutlines && <path d={rightEyeClipPathD} fill="none" stroke={outlineColor} strokeWidth={4 / 2} strokeLinejoin="round" />}</g>
                     </g>
                     {renderEyelashes(leftEyeX)} {renderEyelashes(rightEyeX)}
-                    {hair && fringePath && (<g><path d={fringePath} fill={hairColor} />{bodyOutlines && (<path d={fringeBottomOutlinePath} stroke={outlineColor} strokeWidth={4} fill="none" strokeLinecap="round" />)}</g>)}
-                    <g transform={`translate(${leftEyeX}, ${eyebrowY}) rotate(${params.eyebrowAngle})`}><rect x={-params.eyebrowWidthRatio / 2 * headWidth/100} y={-params.eyebrowHeightRatio / 2 * calculatedEyeSize/100} width={params.eyebrowWidthRatio / 100 * headWidth} height={params.eyebrowHeightRatio / 100 * calculatedEyeSize} fill={pupilColor} rx={2} /></g>
-                    <g transform={`translate(${rightEyeX}, ${eyebrowY}) rotate(${-params.eyebrowAngle})`}><rect x={-params.eyebrowWidthRatio / 2 * headWidth/100} y={-params.eyebrowHeightRatio / 2 * calculatedEyeSize/100} width={params.eyebrowWidthRatio / 100 * headWidth} height={params.eyebrowHeightRatio / 100 * calculatedEyeSize} fill={pupilColor} rx={2} /></g>
-                    <path d={mouthPath} stroke={pupilColor} strokeWidth="4" fill="none" strokeLinecap="round" />
+                    {hair && fringePath && (<g filter={bodyOutlines ? `url(#${filterId})` : 'none'}><path d={fringePath} fill={hairColor} /></g>)}
+                    <g transform={`translate(${leftEyeX}, ${eyebrowY}) rotate(${params.eyebrowAngle})`}><rect x={-params.eyebrowWidthRatio / 2 * headWidth/100} y={-params.eyebrowHeightRatio / 2 * calculatedEyeSize/100} width={params.eyebrowWidthRatio / 100 * headWidth} height={params.eyebrowHeightRatio / 100 * calculatedEyeSize} fill={outlineColor} rx={2} /></g>
+                    <g transform={`translate(${rightEyeX}, ${eyebrowY}) rotate(${-params.eyebrowAngle})`}><rect x={-params.eyebrowWidthRatio / 2 * headWidth/100} y={-params.eyebrowHeightRatio / 2 * calculatedEyeSize/100} width={params.eyebrowWidthRatio / 100 * headWidth} height={params.eyebrowHeightRatio / 100 * calculatedEyeSize} fill={outlineColor} rx={2} /></g>
+                    <path d={mouthPath} stroke={outlineColor} strokeWidth="4" fill="none" strokeLinecap="round" />
                 </g>
             </g>
         );

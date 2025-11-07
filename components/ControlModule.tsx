@@ -18,8 +18,6 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const nodeRef = useRef<HTMLDivElement>(null);
 
-  // Use a ref to store the latest onPositionChange callback
-  // This prevents the mouseup handler from having a stale closure over it
   const onPositionChangeRef = useRef(onPositionChange);
   useEffect(() => {
     onPositionChangeRef.current = onPositionChange;
@@ -47,7 +45,6 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
   }, [handleMouseMove]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Prevent dragging when clicking on form elements inside the panel
     if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, label, textarea, select')) {
         return;
     }
@@ -68,14 +65,12 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
   };
   
   useEffect(() => {
-    // Cleanup event listeners on unmount
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Set initial position using transform
   useEffect(() => {
     if (nodeRef.current && !isDragging) {
         positionRef.current = initialPosition;
@@ -86,7 +81,7 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
   return (
     <div
       ref={nodeRef}
-      className={`absolute top-0 left-0 bg-gray-50/90 backdrop-blur-sm border border-gray-300 rounded-lg shadow-2xl flex flex-col pointer-events-auto ${wide ? 'w-96' : 'w-56'}`}
+      className={`absolute top-0 left-0 bg-[#FFFBF7]/90 backdrop-blur-sm border border-[#FDEFE2] rounded-lg shadow-2xl flex flex-col pointer-events-auto ${wide ? 'w-96' : 'w-56'}`}
       style={{
         zIndex: zIndex,
         cursor: isDragging ? 'grabbing' : 'default',
@@ -94,14 +89,14 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
       onMouseDown={onFocus}
     >
       <div
-        className="flex items-center justify-between bg-gray-200/80 px-3 py-1 rounded-t-lg border-b border-gray-300"
+        className="flex items-center justify-between bg-[#FDEFE2]/80 px-3 py-1 rounded-t-lg border-b border-[#FDEFE2]"
         style={{ cursor: 'grab' }}
         onMouseDown={handleMouseDown}
       >
-        <h2 className="font-bold text-sm text-gray-700 select-none">{title}</h2>
+        <h2 className="font-bold text-sm text-[#8C5A3A] select-none">{title}</h2>
         <button
           onClick={onClose}
-          className="text-gray-500 hover:text-red-600 hover:bg-red-200 rounded-full p-0.5 transition-colors"
+          className="text-[#8C5A3A] hover:text-red-600 hover:bg-red-200 rounded-full p-0.5 transition-colors"
           aria-label={`Close ${title} panel`}
         >
           <CloseIcon className="w-4 h-4" />
