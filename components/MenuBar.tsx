@@ -7,12 +7,30 @@ interface MenuBarProps {
   onRandomizeComic: () => void;
   isRandomizingComic: boolean;
   onMenuItemClick: (key: PanelKey) => void;
+  handleImport: (type: 'lore' | 'characters' | 'story') => void;
+  handleExport: (type: 'lore' | 'characters' | 'story') => void;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport }) => {
   const fileItems = [
     { label: 'Randomize Character', action: onRandomize },
     { label: 'Randomize Comic', action: onRandomizeComic, disabled: isRandomizingComic },
+    {
+      label: 'Importar',
+      subItems: [
+        { label: 'Universo', action: () => handleImport('lore') },
+        { label: 'Personajes', action: () => handleImport('characters') },
+        { label: 'Historia', action: () => handleImport('story') },
+      ]
+    },
+    {
+      label: 'Exportar',
+      subItems: [
+        { label: 'Universo', action: () => handleExport('lore') },
+        { label: 'Personajes', action: () => handleExport('characters') },
+        { label: 'Historia', action: () => handleExport('story') },
+      ]
+    }
   ];
   const universeItems = [
     { label: 'Editor de Universo', action: () => onMenuItemClick('LoreEditor') }

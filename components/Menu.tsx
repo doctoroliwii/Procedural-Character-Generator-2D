@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 
 interface MenuItem {
   label: string;
-  action: () => void;
+  action?: () => void;
   disabled?: boolean;
+  subItems?: MenuItem[];
 }
 
 interface MenuProps {
@@ -13,34 +14,33 @@ interface MenuProps {
 
 const Menu: React.FC<MenuProps> = ({ title, items }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && event.target instanceof Node && !menuRef.current.contains(event.target)) {
         setIsOpen(false);
+        setActiveSubMenu(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleItemClick = (action: () => void) => {
-    action();
-    setIsOpen(false);
+  const handleItemClick = (item: MenuItem) => {
+    if (item.action) {
+      item.action();
+      setIsOpen(false);
+      setActiveSubMenu(null);
+    }
   };
 
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative" ref={menuRef} onMouseLeave={() => { setIsOpen(false); setActiveSubMenu(null); }}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         onMouseEnter={() => setIsOpen(true)}
-        onMouseLeave={(e) => {
-            if (e.relatedTarget instanceof Node && menuRef.current?.contains(e.relatedTarget)) {
-                return;
-            }
-            setIsOpen(false);
-        }}
         className={`px-3 py-1 text-sm font-medium rounded-md transition-colors duration-150 focus:outline-none select-none ${isOpen ? 'bg-red-500 text-white' : 'text-[#593A2D] hover:bg-[#D6A27E]/50'}`}
       >
         {title}
@@ -48,17 +48,37 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
       {isOpen && (
         <div 
             className="absolute top-full left-0 w-48 bg-[#FFFBF7]/95 backdrop-blur-md rounded-md shadow-lg border border-[#FDEFE2] py-1 z-50"
-            onMouseLeave={() => setIsOpen(false)}
         >
           {items.map(item => (
-            <button
-              key={item.label}
-              onClick={() => !item.disabled && handleItemClick(item.action)}
-              disabled={item.disabled}
-              className="w-full text-left px-4 py-2 text-sm text-[#593A2D] hover:bg-red-500 hover:text-white transition-colors duration-150 select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[#593A2D]"
+            <div 
+              key={item.label} 
+              className="relative" 
+              onMouseEnter={() => item.subItems && setActiveSubMenu(item.label)} 
+              onMouseLeave={() => item.subItems && setActiveSubMenu(null)}
             >
-              {item.label}
-            </button>
+              <button
+                onClick={() => handleItemClick(item)}
+                disabled={item.disabled || !item.action}
+                className="w-full flex justify-between items-center text-left px-4 py-2 text-sm text-[#593A2D] hover:bg-red-500 hover:text-white transition-colors duration-150 select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[#593A2D]"
+              >
+                <span>{item.label}</span>
+                {item.subItems && <span className="text-xs">▶</span>}
+              </button>
+              {item.subItems && activeSubMenu === item.label && (
+                <div className="absolute top-0 left-full w-48 bg-[#FFFBF7]/95 backdrop-blur-md rounded-md shadow-lg border border-[#FDEFE2] py-1 z-50">
+                  {item.subItems.map(subItem => (
+                    <button
+                      key={subItem.label}
+                      onClick={() => handleItemClick(subItem)}
+                      disabled={subItem.disabled}
+                      className="w-full text-left px-4 py-2 text-sm text-[#593A2D] hover:bg-red-500 hover:text-white transition-colors duration-150 select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[#593A2D]"
+                    >
+                      {subItem.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}

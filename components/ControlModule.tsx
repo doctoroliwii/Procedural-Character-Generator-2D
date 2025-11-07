@@ -81,7 +81,7 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
   return (
     <div
       ref={nodeRef}
-      className={`absolute top-0 left-0 bg-[#FFFBF7]/90 backdrop-blur-sm border border-[#FDEFE2] rounded-lg shadow-2xl flex flex-col pointer-events-auto ${wide ? 'w-96' : 'w-56'}`}
+      className={`absolute top-0 left-0 bg-[#FFFBF7]/90 backdrop-blur-sm border border-[#FDEFE2] rounded-lg shadow-2xl flex flex-col pointer-events-auto ${wide ? 'w-[36rem]' : 'w-56'}`}
       style={{
         zIndex: zIndex,
         cursor: isDragging ? 'grabbing' : 'default',
@@ -102,7 +102,7 @@ const ControlModule: React.FC<ControlModuleProps> = ({ title, children, initialP
           <CloseIcon className="w-4 h-4" />
         </button>
       </div>
-      <div className="p-3 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+      <div className="p-3 overflow-y-auto" style={{ maxHeight: wide ? '88vh' : '70vh' }}>
         {children}
       </div>
     </div>

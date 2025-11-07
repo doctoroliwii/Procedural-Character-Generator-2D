@@ -12,6 +12,112 @@ import StatusBar from './components/StatusBar';
 
 const QUOTA_ERROR_MESSAGE = 'You have exceeded your API quota. Please <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener noreferrer" class="text-red-600 hover:underline font-semibold">check your plan and billing details</a>. You can monitor your usage <a href="https://ai.dev/usage?tab=rate-limit" target="_blank" rel="noopener noreferrer" class="text-red-600 hover:underline font-semibold">here</a>.';
 
+// --- CSV UTILS --- START
+type CsvDataType = 'lore' | 'characters' | 'story';
+
+const safeStringify = (value: any): string => {
+  const str = typeof value === 'string' ? value : JSON.stringify(value) || '';
+  if (/[",\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
+const LORE_HEADERS: (keyof Lore)[] = ['genre', 'rules', 'history', 'locations'];
+const STORY_HEADERS: (keyof Story)[] = ['genre', 'stakes', 'characterProfileIds', 'storyCircle'];
+const CHARACTER_HEADERS: (keyof CharacterProfile)[] = [
+  'id', 'name', 'age', 'species', 'occupation', 'originLocationId', 'skills', 'limitations', 'psychology', 'backstory', 'characterParams'
+];
+
+function dataToCsv(data: any, type: CsvDataType): string {
+  if (!data) return '';
+  
+  let headers: string[] = [];
+  let rowsData: any[] = [];
+
+  switch(type) {
+    case 'lore':
+      if (data) {
+        headers = LORE_HEADERS;
+        rowsData = [data];
+      }
+      break;
+    case 'story':
+      if (data) {
+        headers = STORY_HEADERS;
+        rowsData = [data];
+      }
+      break;
+    case 'characters':
+      if (Array.isArray(data) && data.length > 0) {
+        headers = CHARACTER_HEADERS;
+        rowsData = data;
+      }
+      break;
+  }
+  
+  if (headers.length === 0) return '';
+  
+  const headerRow = headers.join(',');
+  const rows = rowsData.map(row => {
+    return headers.map(header => safeStringify(row[header])).join(',');
+  });
+  
+  return [headerRow, ...rows].join('\n');
+}
+
+function csvToData(csvString: string, type: CsvDataType): any {
+    const lines = csvString.trim().replace(/\r\n/g, '\n').split('\n');
+    if (lines.length < 2) throw new Error("El CSV debe tener una cabecera y al menos una fila de datos.");
+
+    const headers = lines[0].split(',');
+
+    let expectedHeaders: string[] = [];
+    switch(type) {
+        case 'lore': expectedHeaders = LORE_HEADERS; break;
+        case 'story': expectedHeaders = STORY_HEADERS; break;
+        case 'characters': expectedHeaders = CHARACTER_HEADERS; break;
+    }
+
+    if (headers.length !== expectedHeaders.length || !headers.every((h, i) => h === expectedHeaders[i])) {
+        throw new Error(`Cabeceras de CSV inválidas. Esperado: ${expectedHeaders.join(',')}`);
+    }
+
+    const dataRows = lines.slice(1);
+    const data = dataRows.map((row, rowIndex) => {
+        const values = row.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || [];
+        if (values.length !== headers.length) {
+            throw new Error(`La fila ${rowIndex + 2} tiene un número incorrecto de columnas. Esperado: ${headers.length}, Obtenido: ${values.length}.`);
+        }
+        
+        const obj: any = {};
+        headers.forEach((header, index) => {
+            let value = values[index];
+            if (value.startsWith('"') && value.endsWith('"')) {
+                value = value.slice(1, -1).replace(/""/g, '"');
+            }
+            try {
+                if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
+                    obj[header] = JSON.parse(value);
+                } else {
+                    obj[header] = value;
+                }
+            } catch (e) {
+                obj[header] = value;
+            }
+        });
+        return obj;
+    });
+
+    if (type === 'lore' || type === 'story') {
+        if (data.length === 0) throw new Error("No se encontraron datos para importar.");
+        return data[0];
+    }
+    return data;
+}
+// --- CSV UTILS --- END
+
+
 function App() {
   const [appState, setAppState] = useState<'welcome' | 'editing'>('welcome');
   const [characters, setCharacters] = useState<CharacterInstance[]>([]);
@@ -364,10 +470,98 @@ function App() {
         [key]: { ...prev[key], position }
     }));
   }, []);
+  
+  // FIX: Added a handler to properly update backgroundOptions state from a partial object.
+  const handleBackgroundOptionsChange = useCallback((options: Partial<BackgroundOptions>) => {
+    setBackgroundOptions(prev => ({ ...prev, ...options }));
+  }, []);
 
   const handleMinComicFontSizeChange = useCallback((value: number) => { if (value > maxComicFontSize) { setMinComicFontSize(value); setMaxComicFontSize(value); } else { setMinComicFontSize(value); } }, [maxComicFontSize]);
   const handleMaxComicFontSizeChange = useCallback((value: number) => { if (value < minComicFontSize) { setMaxComicFontSize(value); setMinComicFontSize(value); } else { setMaxComicFontSize(value); } }, [minComicFontSize]);
   
+  const handleExport = useCallback((type: CsvDataType) => {
+    let data;
+    let filename = `${type}.csv`;
+    switch(type) {
+      case 'lore': data = lore; break;
+      case 'characters': data = characterProfiles; break;
+      case 'story': data = story; break;
+    }
+
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+        alert(`No hay datos de "${type}" para exportar.`);
+        return;
+    }
+
+    try {
+        const csvString = dataToCsv(data, type);
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    } catch (error) {
+        console.error("Error exporting CSV:", error);
+        alert(`Ocurrió un error al exportar los datos: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [lore, characterProfiles, story]);
+
+  const handleImport = useCallback((type: CsvDataType) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const csvString = event.target?.result as string;
+        if (!csvString) {
+          alert("El archivo está vacío o no se pudo leer.");
+          return;
+        }
+
+        try {
+          const importedData = csvToData(csvString, type);
+          switch(type) {
+            case 'lore':
+              setLore(importedData as Lore);
+              alert("Universo importado con éxito.");
+              break;
+            case 'story':
+              setStory(importedData as Story);
+              alert("Historia importada con éxito.");
+              break;
+            case 'characters':
+              setCharacterProfiles(prev => {
+                const existingIds = new Set(prev.map(p => p.id));
+                const newChars = (importedData as CharacterProfile[]).filter(p => !existingIds.has(p.id));
+                if (newChars.length === 0) {
+                    alert("No se encontraron personajes nuevos para importar (IDs ya existen).");
+                    return prev;
+                }
+                alert(`${newChars.length} personaje(s) importado(s) con éxito.`);
+                return [...prev, ...newChars];
+              });
+              break;
+          }
+        } catch (error) {
+          console.error("Error importing CSV:", error);
+          alert(`Error al importar el archivo: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, []);
+
   return (
     <div className="flex flex-col h-screen w-screen bg-[#FFFBF7] font-sans overflow-hidden">
       {appState === 'welcome' && (
@@ -386,7 +580,14 @@ function App() {
             </button>
           </div>
       )}
-      <MenuBar onRandomize={handleRandomize} onRandomizeComic={handleRandomizeComic} isRandomizingComic={isRandomizingComic} onMenuItemClick={openPanel} />
+      <MenuBar 
+        onRandomize={handleRandomize} 
+        onRandomizeComic={handleRandomizeComic} 
+        isRandomizingComic={isRandomizingComic} 
+        onMenuItemClick={openPanel} 
+        handleImport={handleImport}
+        handleExport={handleExport}
+      />
       <main className="flex-grow relative">
         <CharacterCanvas 
             characters={characters} 
@@ -404,7 +605,7 @@ function App() {
        <ControlPanel
           panels={panels}
           backgroundOptions={backgroundOptions}
-          onBackgroundOptionsChange={setBackgroundOptions}
+          onBackgroundOptionsChange={handleBackgroundOptionsChange}
           showBoundingBoxes={showBoundingBoxes}
           onShowBoundingBoxesChange={setShowBoundingBoxes}
           comicTheme={comicTheme}

@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Lore, CharacterProfile, Story } from '../types';
+// FIX: Added import for Location type.
+import type { Lore, CharacterProfile, Story, Location } from '../types';
 
 // API key is automatically provided by the environment
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
@@ -190,7 +191,8 @@ const characterProfileSchema = {
                 virtues: { type: Type.STRING },
                 flaws: { type: Type.STRING },
                 archetype: { type: Type.STRING },
-            }
+            },
+            required: ["motivation", "fear", "virtues", "flaws", "archetype"],
         },
         backstory: {
             type: Type.OBJECT,
@@ -199,7 +201,8 @@ const characterProfileSchema = {
                 wound: { type: Type.STRING },
                 journey: { type: Type.STRING },
                 initialState: { type: Type.STRING },
-            }
+            },
+            required: ["origin", "wound", "journey", "initialState"],
         },
     },
     required: [ "id", "name", "age", "species", "occupation", "originLocationId", "psychology", "skills", "limitations", "backstory" ]
@@ -285,6 +288,31 @@ export const generateComicScriptFromStory = async (story: Story, lore: Lore, cha
         config: {
             responseMimeType: "application/json",
             responseSchema: simpleComicScriptSchema,
+        },
+    });
+    return parseJsonResponse(response.text);
+};
+
+const locationSchema = {
+    type: Type.OBJECT,
+    properties: {
+        name: { type: Type.STRING },
+        description: { type: Type.STRING },
+    },
+    required: ["name", "description"],
+};
+
+export const generateLocation = async (genre: string): Promise<{ name: string; description: string }> => {
+    const prompt = `Crea un lugar único y evocador para un mundo de ficción del género "${genre}".
+    Proporciona un nombre y una descripción breve (2-3 frases).
+    La respuesta debe ser un objeto JSON con las claves "name" y "description".`;
+    
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: locationSchema,
         },
     });
     return parseJsonResponse(response.text);
