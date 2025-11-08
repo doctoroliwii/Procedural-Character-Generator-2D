@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import type { BackgroundOptions, CharacterInstance, ComicPanelData } from '../types';
 import Character from './Character';
 import ComicPanel from './ComicPanel';
@@ -11,12 +11,14 @@ interface CharacterCanvasProps {
   comicAspectRatio: '1:1' | '16:9' | '9:16';
   minComicFontSize: number;
   maxComicFontSize: number;
+  comicLanguage: string;
+  comicTheme: string;
   canvasResetToken: number;
   onViewBoxChange: (viewBox: { x: number; y: number; width: number; height: number; }) => void;
 }
 
 
-const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, canvasResetToken, onViewBoxChange }) => {
+const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicTheme, canvasResetToken, onViewBoxChange }, ref) => {
   const VIEWBOX_WIDTH_BASE = 400;
   const VIEWBOX_HEIGHT = 700;
   
@@ -32,6 +34,100 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
   const canvasWidth = isComicMode
     ? (comicAspectRatio === '1:1' ? canvasHeight : comicAspectRatio === '16:9' ? canvasHeight * (16 / 9) : canvasHeight * (9 / 16))
     : VIEWBOX_WIDTH_BASE;
+  
+  useImperativeHandle(ref, () => ({
+    export: () => {
+      if (!svgRef.current || !isComicMode) {
+        alert("No comic available to export.");
+        return;
+      }
+      const svgNode = svgRef.current;
+      const serializer = new XMLSerializer();
+      let svgString = serializer.serializeToString(svgNode);
+
+      // Create an image
+      const img = new Image();
+      const svgBlob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
+      const url = URL.createObjectURL(svgBlob);
+
+      img.onload = () => {
+        // Create a canvas
+        const canvas = document.createElement("canvas");
+        const exportResolution = 2048; // a high resolution for good quality
+        
+        const ratio = canvasWidth / canvasHeight;
+        canvas.width = exportResolution;
+        canvas.height = exportResolution / ratio;
+        
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+           
+           // --- Add Logo and Date ---
+           const today = new Date();
+           const dd = String(today.getDate()).padStart(2, '0');
+           const mm = String(today.getMonth() + 1).padStart(2, '0'); // January is 0!
+           const yyyy = today.getFullYear();
+           const dateStr = `${dd}-${mm}-${yyyy}`;
+           
+           const logoText = "Plop!";
+           const fullText = `${logoText} ${dateStr}`;
+           
+           const fontSize = Math.round(canvas.width * 0.015);
+           const margin = canvas.width * 0.01;
+           
+           ctx.textAlign = 'right';
+           ctx.textBaseline = 'bottom';
+           
+           // Date text
+           ctx.font = `normal ${fontSize}px sans-serif`;
+           ctx.fillStyle = '#4A2E2C'; // condorito-brown
+           ctx.fillText(dateStr, canvas.width - margin, canvas.height - margin);
+           
+           const dateWidth = ctx.measureText(dateStr).width;
+           const spaceWidth = ctx.measureText(" ").width;
+           
+           // Logo text
+           ctx.font = `bold ${fontSize}px sans-serif`;
+           
+           const logoX = canvas.width - margin - dateWidth - spaceWidth;
+           const logoY = canvas.height - margin;
+           
+           // Outline
+           ctx.strokeStyle = '#4A2E2C'; // condorito-brown
+           ctx.lineWidth = fontSize * 0.2; // Outline thickness
+           ctx.strokeText(logoText, logoX, logoY);
+
+           // Fill
+           ctx.fillStyle = '#D84949'; // condorito-red
+           ctx.fillText(logoText, logoX, logoY);
+           // --- End Logo and Date ---
+
+           const pngUrl = canvas.toDataURL("image/png");
+
+           // --- Generate Filename ---
+           const sanitizedTheme = comicTheme
+             .trim()
+             .replace(/\s+/g, '-') 
+             .replace(/[^a-zA-Z0-9-]/g, '')
+             .toLowerCase() || 'comic';
+
+           const filename = `${sanitizedTheme}-plop-${dateStr}.png`;
+           
+           // Trigger download
+           const a = document.createElement("a");
+           a.href = pngUrl;
+           a.download = filename;
+           document.body.appendChild(a);
+           a.click();
+           document.body.removeChild(a);
+        }
+        URL.revokeObjectURL(url);
+      };
+      
+      img.src = url;
+    }
+  }));
   
   useEffect(() => {
     onViewBoxChange(viewBox);
@@ -213,8 +309,8 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
       </defs>
       
       {isComicMode && comicPanels ? (
-        <>
-            <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#checkerboard)" />
+        <g id="comic-container">
+            <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="white" />
             
             {/* Layer 1: Panel contents (backgrounds, characters, borders) */}
             <g id="comic-content-layer">
@@ -226,6 +322,7 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
                     panelLayout={panelLayout}
                     minComicFontSize={minComicFontSize}
                     maxComicFontSize={maxComicFontSize}
+                    comicLanguage={comicLanguage}
                     layer="content"
                   />
               ))}
@@ -241,11 +338,13 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
                     panelLayout={panelLayout}
                     minComicFontSize={minComicFontSize}
                     maxComicFontSize={maxComicFontSize}
+                    comicLanguage={comicLanguage}
                     layer="dialogue"
                   />
               ))}
             </g>
-        </>
+            <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="none" stroke="black" strokeWidth="2" />
+        </g>
       ) : (
         <>
             <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#checkerboard)" />
@@ -263,6 +362,6 @@ const CharacterCanvas: React.FC<CharacterCanvasProps> = ({ characters, comicPane
       )}
     </svg>
   );
-};
+});
 
 export default CharacterCanvas;

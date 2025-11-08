@@ -17,65 +17,15 @@ const getClosestPointOnRect = (point: {x: number, y: number}, rect: {x: number, 
     return { x: closestX, y: closestY };
 };
 
-function findOptimalBubblePosition(
-    speakerHead: {x: number, y: number, width: number, height: number},
-    bubbleW: number,
-    bubbleH: number,
-    allHeadsInPanel: {x: number, y: number, width: number, height: number}[],
-    otherBubbleRects: {x: number, y: number, width: number, height: number}[]
-) {
-    const mainPadding = 30;
-    const sidePadding = 15;
-    const candidates = [
-        // 1. Centered above head
-        { x: speakerHead.x + speakerHead.width / 2, y: speakerHead.y - bubbleH / 2 - mainPadding },
-        // 2. To the top-right
-        { x: speakerHead.x + speakerHead.width + bubbleW / 2 + sidePadding, y: speakerHead.y - bubbleH / 2 },
-        // 3. To the top-left
-        { x: speakerHead.x - bubbleW / 2 - sidePadding, y: speakerHead.y - bubbleH / 2 },
-        // 4. Further above head
-        { x: speakerHead.x + speakerHead.width / 2, y: speakerHead.y - bubbleH / 2 - mainPadding * 1.5 },
-        // 5. To the side, centered vertically with head
-        { x: speakerHead.x + speakerHead.width + bubbleW / 2 + sidePadding, y: speakerHead.y + speakerHead.height / 2 },
-        { x: speakerHead.x - bubbleW / 2 - sidePadding, y: speakerHead.y + speakerHead.height / 2 },
-    ];
-
-    for (const pos of candidates) {
-        const bubbleRect = { x: pos.x - bubbleW / 2, y: pos.y - bubbleH / 2, width: bubbleW, height: bubbleH };
-        let isColliding = false;
-
-        for (const head of allHeadsInPanel) {
-            const headPadding = 10; // Add 10px safety margin around heads
-            const paddedHead = { 
-                x: head.x - headPadding, 
-                y: head.y - headPadding, 
-                width: head.width + headPadding * 2, 
-                height: head.height + headPadding * 2
-            };
-            if (checkCollision(bubbleRect, paddedHead)) {
-                isColliding = true;
-                break;
-            }
-        }
-        if (isColliding) continue;
-
-        for (const otherBubble of otherBubbleRects) {
-            const paddedOtherBubble = { ...otherBubble, x: otherBubble.x - 10, y: otherBubble.y - 10, width: otherBubble.width + 20, height: otherBubble.height + 20 };
-            if (checkCollision(bubbleRect, paddedOtherBubble)) {
-                isColliding = true;
-                break;
-            }
-        }
-
-        if (!isColliding) {
-            return { bubbleX: pos.x, bubbleY: pos.y };
-        }
-    }
-    return { bubbleX: candidates[0].x, bubbleY: candidates[0].y };
-}
-
-const createBubblePathWithTail = (bubbleRect: {x: number, y: number, width: number, height: number}, tailTip: {x: number, y: number}): string => {
+const createBubblePathWithTail = (bubbleRect: {x: number, y: number, width: number, height: number}, initialTailTip: {x: number, y: number}): string => {
     const { x, y, width, height } = bubbleRect;
+    
+    // Failsafe: if the tail tip is inside the bubble, move it to the nearest edge to prevent inversion.
+    let tailTip = { ...initialTailTip };
+    if (tailTip.x > x && tailTip.x < x + width && tailTip.y > y && tailTip.y < y + height) {
+        tailTip = getClosestPointOnRect(tailTip, bubbleRect);
+    }
+    
     const r = 15;
     const tailBaseWidth = 20;
 
@@ -250,16 +200,31 @@ const calculatePanelTransform = (panel: ComicPanelData, pW: number, pH: number) 
         return `translate(${pW / 2}, ${pH / 2}) scale(0.6)`;
     }
 
-    const padding = shotType === 'close-up' ? 1.05 : 1.15;
-    const scaleX = pW / (contentWidth * padding);
-    const scaleY = pH / (contentHeight * padding);
-    const finalScale = Math.min(scaleX, scaleY);
+    // --- NEW COMPOSITION LOGIC ---
+    // Reserve top 33% of the panel for dialogue bubbles.
+    const characterAreaY = pH * 0.33;
+    const characterAreaHeight = pH * 0.67;
+    const characterAreaWidth = pW;
 
+    // Add padding to the content
+    const padding = shotType === 'close-up' ? 1.05 : 1.15;
+    const paddedContentWidth = contentWidth * padding;
+    const paddedContentHeight = contentHeight * padding;
+    
+    // Calculate scale to fit content within the character area
+    const scaleX = characterAreaWidth / paddedContentWidth;
+    const scaleY = characterAreaHeight / paddedContentHeight;
+    const finalScale = Math.min(scaleX, scaleY);
+    
+    // Center of the original content bounding box
     const contentCenterX = groupMinX + contentWidth / 2;
     const contentCenterY = groupMinY + contentHeight / 2;
-
+    
+    // Calculate translation to center the scaled content within the character area
     const translateX = (pW / 2) - (contentCenterX * finalScale);
-    const translateY = (pH / 2) - (contentCenterY * finalScale);
+    // The target Y is the center of the character area
+    const targetY = characterAreaY + (characterAreaHeight / 2);
+    const translateY = targetY - (contentCenterY * finalScale);
 
     return `translate(${translateX}, ${translateY}) scale(${finalScale})`;
 };
@@ -271,10 +236,11 @@ interface ComicPanelProps {
   minComicFontSize: number;
   maxComicFontSize: number;
   instanceKey: string;
+  comicLanguage: string;
   layer: 'content' | 'dialogue';
 }
 
-const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFontSize, maxComicFontSize, instanceKey, layer }) => {
+const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFontSize, maxComicFontSize, instanceKey, comicLanguage, layer }) => {
   const { x: pX, y: pY, width: pW, height: pH } = panelLayout;
 
   const panelTransform = useMemo(() => {
@@ -282,72 +248,158 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
   }, [panel, pW, pH]);
 
   const dialogueData = useMemo(() => {
-    if (layer === 'content' || !panelTransform) return [];
+    if (layer === 'content' || !panelTransform || panel.dialogues.length === 0) return [];
 
     const transformMatch = /translate\(([^,]+),([^)]+)\) scale\(([^)]+)\)/.exec(panelTransform);
     if (!transformMatch) return [];
     
     const [, txStr, tyStr, sStr] = transformMatch;
-    const tx = parseFloat(txStr);
-    const ty = parseFloat(tyStr);
-    const s = parseFloat(sStr);
-    
-    const transformPointToAbsolute = (localPos: { x: number, y: number }) => {
-      const transformedX = localPos.x * s + tx;
-      const transformedY = localPos.y * s + ty;
-      return { x: pX + transformedX, y: pY + transformedY };
-    };
+    const tx = parseFloat(txStr); const ty = parseFloat(tyStr); const s = parseFloat(sStr);
+    const isRTL = comicLanguage === 'ja' || comicLanguage === 'zh';
 
     const getAbsoluteHeadBounds = (char: CharacterInstance) => {
         const headBoundsLocal = getCharacterHeadBounds(char.params);
-        const getTransformedLocalPoint = (px: number, py: number) => ({
-            x: ((px - VIEWBOX_WIDTH_BASE / 2) * char.scale) + char.x,
-            y: ((py - VIEWBOX_HEIGHT / 2) * char.scale) + char.y
-        });
-        const headTopLeft = getTransformedLocalPoint(headBoundsLocal.x, headBoundsLocal.y);
-        const headBottomRight = getTransformedLocalPoint(headBoundsLocal.x + headBoundsLocal.width, headBoundsLocal.y + headBoundsLocal.height);
-        const absTopLeft = transformPointToAbsolute(headTopLeft);
-        const absBottomRight = transformPointToAbsolute(headBottomRight);
-        return { x: absTopLeft.x, y: absTopLeft.y, width: absBottomRight.x - absTopLeft.x, height: absBottomRight.y - absTopLeft.y, };
+        const groupTopLeft = { x: (headBoundsLocal.x - VIEWBOX_WIDTH_BASE/2) * char.scale + char.x, y: (headBoundsLocal.y - VIEWBOX_HEIGHT/2) * char.scale + char.y };
+        const groupBottomRight = { x: (headBoundsLocal.x + headBoundsLocal.width - VIEWBOX_WIDTH_BASE/2) * char.scale + char.x, y: (headBoundsLocal.y + headBoundsLocal.height - VIEWBOX_HEIGHT/2) * char.scale + char.y };
+        const panelTopLeft = { x: groupTopLeft.x * s + tx, y: groupTopLeft.y * s + ty };
+        const panelBottomRight = { x: groupBottomRight.x * s + tx, y: groupBottomRight.y * s + ty };
+        return { x: pX + panelTopLeft.x, y: pY + panelTopLeft.y, width: panelBottomRight.x - panelTopLeft.x, height: panelBottomRight.y - panelTopLeft.y };
     };
     
     const allHeadBoundsInPanel = panel.characters.map(getAbsoluteHeadBounds);
-    const placedBubbleRects: {x: number, y: number, width: number, height: number}[] = [];
 
-    return panel.dialogues.map((dialogue, i) => {
-      const speakerId = dialogue.characterId;
-      const speakerIndexInPanel = panel.characterIdsInPanel.indexOf(speakerId);
-      if (speakerIndexInPanel === -1) return null;
-      
-      const speaker = panel.characters[speakerIndexInPanel];
-      if (!speaker) return null;
+    // --- 1. INITIALIZATION ---
+    let maxBubbleWidth = Math.min(250, pW * (panel.dialogues.length > 2 ? 0.6 : 0.8));
 
-      const speakerHeadBounds = allHeadBoundsInPanel[speakerIndexInPanel];
-      const maxBubbleWidth = Math.min(250, pW * 0.85);
-      
-      const FONT_SCALE_FACTOR = 40;
+    let bubbles = panel.dialogues.map((dialogue, index) => {
+      const FONT_SCALE_FACTOR = 25;
+      const DIALOGUE_COUNT_FACTOR = 0.95;
+      const numDialogues = panel.dialogues.length;
+
       const textLength = dialogue.text.length;
       const sizeRange = maxComicFontSize - minComicFontSize;
-      const targetSize = maxComicFontSize - (textLength / FONT_SCALE_FACTOR) * sizeRange;
-      const dynamicFontSize = Math.max(minComicFontSize, Math.min(maxComicFontSize, targetSize));
+      const lengthBasedSize = maxComicFontSize - (textLength / FONT_SCALE_FACTOR) * sizeRange;
+      const clampedLengthSize = Math.max(minComicFontSize, lengthBasedSize);
+      const sizeAfterPenalty = clampedLengthSize * Math.pow(DIALOGUE_COUNT_FACTOR, Math.max(0, numDialogues - 1));
+      const dynamicFontSize = Math.max(minComicFontSize, Math.min(maxComicFontSize, sizeAfterPenalty));
       
       const textLines = wrapText(dialogue.text.toUpperCase(), dynamicFontSize, maxBubbleWidth - 20);
       const textHeight = textLines.length * dynamicFontSize * 1.2;
-      const bubbleWidth = Math.min(maxBubbleWidth, Math.max(80, textLines.reduce((max, line) => Math.max(max, estimateTextWidth(line, dynamicFontSize)), 0) + 20));
-      const bubbleHeight = textHeight + 20;
-
-      const { bubbleX, bubbleY } = findOptimalBubblePosition(speakerHeadBounds, bubbleWidth, bubbleHeight, allHeadBoundsInPanel, placedBubbleRects);
+      const width = Math.min(maxBubbleWidth, Math.max(80, textLines.reduce((max, line) => Math.max(max, estimateTextWidth(line, dynamicFontSize)), 0) + 20));
+      const height = textHeight + 20;
       
-      const bubbleRect = { x: bubbleX - bubbleWidth / 2, y: bubbleY - bubbleHeight / 2, width: bubbleWidth, height: bubbleHeight };
-      placedBubbleRects.push(bubbleRect);
+      const speakerIndexInPanel = panel.characterIdsInPanel.indexOf(dialogue.characterId);
+      const speakerHeadBounds = speakerIndexInPanel !== -1 ? allHeadBoundsInPanel[speakerIndexInPanel] : { x: pX + pW / 2, y: pY + pH / 2, width: 0, height: 0 };
+      
+      const headCenterX = speakerHeadBounds.x + speakerHeadBounds.width / 2;
+      const headTopY = speakerHeadBounds.y;
 
-      const tailTip = getClosestPointOnRect({ x: bubbleX, y: bubbleY }, speakerHeadBounds);
-      const bubblePath = createBubblePathWithTail(bubbleRect, tailTip);
+      const yPos = headTopY - height / 2 - 25;
+      
+      const totalCharsInPanel = panel.characters.length;
+      let horizontalOffset = 0;
+      if (totalCharsInPanel > 1 && speakerIndexInPanel !== -1) {
+          const offsetAmount = pW * 0.05;
+          horizontalOffset = (speakerIndexInPanel / (totalCharsInPanel - 1) - 0.5) * 2 * offsetAmount;
+      }
+      const xPos = headCenterX + horizontalOffset;
 
-      return { key: `dialogue-${instanceKey}-${i}`, bubblePath, bubbleX, bubbleY, textHeight, dynamicFontSize, textLines };
-    }).filter(Boolean);
+      return {
+        id: index, x: xPos - width / 2, y: yPos, width, height, dynamicFontSize, textLines, textHeight, speakerHeadBounds,
+      };
+    });
 
-  }, [panel, panelTransform, minComicFontSize, maxComicFontSize, pX, pY, pW, pH, instanceKey, layer]);
+    // --- 2. SIMULATION ---
+    const iterations = 100;
+    const padding = { bubble: 12, head: 10, panel: 5 };
+    const paddedHeads = allHeadBoundsInPanel.map(h => ({ x: h.x - padding.head, y: h.y - padding.head, width: h.width + padding.head * 2, height: h.height + padding.head * 2 }));
+
+    for (let i = 0; i < iterations; i++) {
+        let moved = false;
+        
+        // Bubble vs Bubble collision
+        for (let j = 0; j < bubbles.length; j++) {
+            for (let k = j + 1; k < bubbles.length; k++) {
+                const b1 = bubbles[j];
+                const b2 = bubbles[k];
+                const rect1 = { ...b1, width: b1.width + padding.bubble, height: b1.height + padding.bubble, x: b1.x - padding.bubble/2, y: b1.y - padding.bubble/2 };
+                const rect2 = { ...b2, width: b2.width + padding.bubble, height: b2.height + padding.bubble, x: b2.x - padding.bubble/2, y: b2.y - padding.bubble/2 };
+
+                if (checkCollision(rect1, rect2)) {
+                    moved = true;
+                    const dx = (rect1.x + rect1.width / 2) - (rect2.x + rect2.width / 2);
+                    const dy = (rect1.y + rect1.height / 2) - (rect2.y + rect2.height / 2);
+                    const overlapX = (rect1.width / 2 + rect2.width / 2) - Math.abs(dx);
+                    const overlapY = (rect1.height / 2 + rect2.height / 2) - Math.abs(dy);
+                    if (overlapX > 0 && overlapY > 0) {
+                        if (overlapX < overlapY) {
+                            const push = overlapX / 2 * (dx > 0 ? 1 : -1);
+                            b1.x += push; b2.x -= push;
+                        } else {
+                            const push = overlapY / 2 * (dy > 0 ? 1 : -1);
+                            b1.y += push; b2.y -= push;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bubble vs Heads & Panel Boundary
+        for (let j = 0; j < bubbles.length; j++) {
+            const b = bubbles[j];
+            // vs Heads
+            paddedHeads.forEach(head => {
+                if(checkCollision(b, head)) {
+                   moved = true;
+                   const dx = (b.x + b.width / 2) - (head.x + head.width / 2);
+                   const dy = (b.y + b.height / 2) - (head.y + head.height / 2);
+                   const overlapX = (b.width / 2 + head.width / 2) - Math.abs(dx);
+                   const overlapY = (b.height / 2 + head.height / 2) - Math.abs(dy);
+                   if (overlapX > 0 && overlapY > 0) {
+                       if (overlapY < overlapX && dy < 0) {
+                            b.y -= overlapY;
+                       } else {
+                           if (overlapX < overlapY) {
+                               b.x += overlapX * (dx > 0 ? 1 : -1);
+                           } else {
+                               b.y += overlapY * (dy > 0 ? 1 : -1);
+                           }
+                       }
+                   }
+                }
+            });
+
+            // vs Boundary
+            if (b.x < pX + padding.panel) { b.x = pX + padding.panel; moved = true; }
+            if (b.x + b.width > pX + pW - padding.panel) { b.x = pX + pW - padding.panel - b.width; moved = true; }
+            if (b.y < pY + padding.panel) { b.y = pY + padding.panel; moved = true; }
+            if (b.y + b.height > pY + pH - padding.panel) { b.y = pY + pH - padding.panel - b.height; moved = true; }
+        }
+
+        if (!moved) break;
+    }
+
+    // --- 3. FINALIZATION ---
+    return bubbles.map(bubble => {
+      const tailTip = {
+          x: bubble.speakerHeadBounds.x + bubble.speakerHeadBounds.width / 2,
+          y: bubble.speakerHeadBounds.y + bubble.speakerHeadBounds.height * 0.75,
+      };
+      const bubblePath = createBubblePathWithTail(bubble, tailTip);
+
+      return {
+        key: `dialogue-${instanceKey}-${bubble.id}`,
+        bubblePath,
+        bubbleX: bubble.x + bubble.width / 2,
+        bubbleY: bubble.y + bubble.height / 2,
+        textHeight: bubble.textHeight,
+        dynamicFontSize: bubble.dynamicFontSize,
+        textLines: bubble.textLines,
+      };
+    });
+
+  }, [panel, panelTransform, minComicFontSize, maxComicFontSize, pX, pY, pW, pH, instanceKey, layer, comicLanguage]);
+
 
   if (layer === 'dialogue') {
       return (
@@ -367,11 +419,31 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
   }
 
   // layer === 'content'
+  const bgImageProps = useMemo(() => {
+    if (!panel.backgroundImageB64) return null;
+
+    const bleed = 1.18; // 18% enlargement
+    const newWidth = pW * bleed;
+    const newHeight = pH * bleed;
+    const newX = -(pW * (bleed - 1)) / 2; // Center the oversized image
+    const newY = -(pH * (bleed - 1)) / 2;
+
+    return {
+      href: `data:image/png;base64,${panel.backgroundImageB64}`,
+      x: newX,
+      y: newY,
+      width: newWidth,
+      height: newHeight,
+      preserveAspectRatio: "none" as const,
+    };
+  }, [panel.backgroundImageB64, pW, pH]);
+
   return (
     <g transform={`translate(${pX}, ${pY})`}>
         <defs><clipPath id={`clip-${panel.id}`}><rect x="0" y="0" width={pW} height={pH} /></clipPath></defs>
         <rect x="0" y="0" width={pW} height={pH} fill={panel.backgroundColor} />
         <g clipPath={`url(#clip-${panel.id})`}>
+            {bgImageProps && <image {...bgImageProps} />}
             <g transform={panelTransform}>
                 {panel.characters.map((char, charIndex) => 
                     <Character 

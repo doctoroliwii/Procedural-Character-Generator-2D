@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { Lore, CharacterProfile, Story, Location } from '../types';
-import { DiceIcon } from './icons';
-import { generateNarrativeField, generateLocation } from '../services/geminiService';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { Lore, CharacterProfile, Story, Location, RichText, Segment } from '../types';
+import { DiceIcon, ImageIcon } from './icons';
+import { generateNarrativeField, generateLocation, generateLocationImage } from '../services/geminiService';
 import { PanelKey } from './ControlPanel';
 
 
@@ -16,6 +16,69 @@ interface LoreEditorProps {
   setApiError: (error: string | null) => void;
 }
 
+// --- UTILS ---
+const richTextToString = (value: RichText | undefined): string => value?.map(s => s.text).join('') || '';
+const stringToRichText = (text: string, source: 'user' | 'ai'): RichText => [{ text, source }];
+const EMPTY_LORE: Lore = { genre: [], rules: [], locations: [], history: [] };
+
+// --- RichTextEditor Component ---
+interface RichTextEditorProps {
+    label: string;
+    value: RichText | undefined;
+    onChange: (value: RichText) => void;
+    onBlur: React.FocusEventHandler<HTMLTextAreaElement | HTMLInputElement>;
+    rows?: number;
+    onGenerate?: () => void;
+    isGenerating?: boolean;
+    isSingleLine?: boolean;
+}
+
+const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({ label, value, onChange, onBlur, rows = 3, onGenerate, isGenerating, isSingleLine = false }) => {
+    // Convert RichText to a simple string for the textarea.
+    const stringValue = richTextToString(value);
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+        // When the user types, we create a new RichText object with the source 'user'.
+        onChange([{ text: e.target.value, source: 'user' }]);
+    };
+
+    const commonProps = {
+        value: stringValue,
+        onChange: handleChange,
+        onBlur: onBlur,
+        // FIX: Changed spellCheck to a boolean to match the expected 'Booleanish' type.
+        spellCheck: false,
+        className: "w-full p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red transition",
+        style: { paddingRight: onGenerate ? '2.5rem' : '0.5rem' }
+    };
+
+    return (
+        <div>
+            <label className="select-none block text-xs font-semibold text-condorito-brown mb-1">{label}</label>
+            <div className="relative">
+                {isSingleLine ? (
+                    <input type="text" {...commonProps} className={`${commonProps.className} resize-none`} />
+                ) : (
+                    <textarea rows={rows} {...commonProps} className={`${commonProps.className} resize-y`} />
+                )}
+                {onGenerate && (
+                    <button
+                        onClick={onGenerate}
+                        disabled={isGenerating}
+                        className="absolute top-1.5 right-1.5 p-1 bg-condorito-red/10 text-condorito-red rounded-full hover:bg-condorito-red/20 disabled:bg-panel-header disabled:text-panel-border disabled:cursor-wait transition-colors"
+                        aria-label={`Generate ${label}`}
+                        title={`Generate ${label}`}
+                    >
+                        <DiceIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+});
+
+
+// --- UI Components ---
 type MainTab = 'lore' | 'story';
 type LoreSubTab = 'core' | 'locations';
 type StorySubTab = 'premise' | 'plot';
@@ -28,88 +91,17 @@ interface LorePreset {
 }
 
 
-// --- UI Components ---
-
 const MainTabButton = ({ tabName, label, activeTab, setActiveTab }: { tabName: MainTab, label: string, activeTab: MainTab, setActiveTab: (tab: MainTab) => void}) => (
     <button
         onClick={() => setActiveTab(tabName)}
-        className={`flex-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors duration-200 focus:outline-none ${activeTab === tabName ? 'border-red-500 text-red-600 bg-white' : 'border-transparent text-[#8C5A3A] hover:bg-[#FDEFE2]/50 hover:text-[#593A2D]'}`}
+        className={`select-none flex-1 px-3 py-2 text-xs font-medium border-b-2 transition-colors duration-200 focus:outline-none ${activeTab === tabName ? 'border-condorito-red text-condorito-red bg-white' : 'border-transparent text-condorito-brown hover:bg-panel-header/50 hover:text-condorito-brown'}`}
     >{label}</button>
 );
 
 const SubTabButton = ({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) => (
-    <button onClick={onClick} className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-red-500 text-white shadow-sm' : 'bg-[#FDEFE2] text-[#8C5A3A] hover:bg-[#D6A27E]'}`}>
+    <button onClick={onClick} className={`select-none px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-condorito-red text-white shadow-sm' : 'bg-panel-header text-condorito-brown hover:bg-panel-border'}`}>
         {label}
     </button>
-);
-
-const TextArea = ({ label, value, onChange, onBlur, rows=3, onGenerate, isGenerating }: {
-    label:string,
-    value:string | undefined,
-    onChange:(val:string)=>void,
-    onBlur: React.FocusEventHandler<HTMLTextAreaElement>,
-    rows?:number,
-    onGenerate?: () => void;
-    isGenerating?: boolean;
-}) => (
-    <div>
-        <label className="block text-xs font-semibold text-[#8C5A3A] mb-1">{label}</label>
-        <div className="relative">
-            <textarea 
-                value={value || ''} 
-                onChange={e => onChange(e.target.value)} 
-                onBlur={onBlur} 
-                rows={rows} 
-                className="w-full p-2 border border-[#FDEFE2] rounded-md text-sm bg-[#FFFBF7] focus:bg-white focus:ring-1 focus:ring-red-500 transition" 
-                style={{ paddingRight: onGenerate ? '2.5rem' : '0.5rem' }}
-            />
-             {onGenerate && (
-                <button
-                    onClick={onGenerate}
-                    disabled={isGenerating}
-                    className="absolute top-1.5 right-1.5 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 disabled:bg-[#FDEFE2] disabled:text-[#D6A27E] disabled:cursor-wait transition-colors"
-                    aria-label={`Generate ${label}`}
-                    title={`Generate ${label}`}
-                >
-                    <DiceIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                </button>
-            )}
-        </div>
-    </div>
-);
-
-const TextInput = ({ label, value, onChange, onBlur, onGenerate, isGenerating }: {
-    label:string, 
-    value:string | undefined, 
-    onChange:(val:string)=>void, 
-    onBlur: React.FocusEventHandler<HTMLInputElement>,
-    onGenerate?: () => void,
-    isGenerating?: boolean
-}) => (
-     <div>
-        <label className="block text-xs font-semibold text-[#8C5A3A] mb-1">{label}</label>
-        <div className="relative">
-            <input 
-                type="text" 
-                value={value || ''} 
-                onChange={e => onChange(e.target.value)} 
-                onBlur={onBlur} 
-                className="w-full p-2 border border-[#FDEFE2] rounded-md text-sm bg-[#FFFBF7] focus:bg-white focus:ring-1 focus:ring-red-500 transition" 
-                style={{ paddingRight: onGenerate ? '2.5rem' : '0.5rem' }}
-            />
-            {onGenerate && (
-                 <button
-                    onClick={onGenerate}
-                    disabled={isGenerating}
-                    className="absolute top-1/2 -translate-y-1/2 right-1.5 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 disabled:bg-[#FDEFE2] disabled:text-[#D6A27E] disabled:cursor-wait transition-colors"
-                    aria-label={`Generate ${label}`}
-                    title={`Generate ${label}`}
-                >
-                    <DiceIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                </button>
-            )}
-        </div>
-    </div>
 );
 
 
@@ -118,6 +110,7 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
     const [activeSubTabs, setActiveSubTabs] = useState({ lore: 'core' as LoreSubTab, story: 'premise' as StorySubTab });
     const [isLoading, setIsLoading] = useState<string | null>(null);
     const [isFieldLoading, setIsFieldLoading] = useState<Set<string>>(new Set());
+    const [isImageLoading, setIsImageLoading] = useState<Set<string>>(new Set());
 
     const [localLore, setLocalLore] = useState(lore);
     const [localStory, setLocalStory] = useState(story);
@@ -222,14 +215,15 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
         try {
             const { text } = await generateNarrativeField(field, context);
             const [mainKey, subKey] = field.split('.');
+            const richText = stringToRichText(text, 'ai');
 
             if (mainKey === 'lore') {
-                setLocalLore(current => ({ ...(current || { genre: '', rules: '', locations: [], history: '' }), [subKey]: text }));
+                const emptyLore: Lore = { genre: [], rules: [], locations: [], history: [] };
+                setLocalLore(current => ({ ...(current || emptyLore), [subKey]: richText }));
             } else if (mainKey === 'story') {
-                 // FIX: Corrected state update logic to ensure a full Story object is always created.
                  setLocalStory(current => {
-                    const baseStory: Story = current ?? { genre: '', stakes: '', characterProfileIds:[], storyCircle:[] };
-                    return { ...baseStory, [subKey]: text };
+                    const baseStory: Story = current ?? { genre: [], stakes: [], characterProfileIds:[], storyCircle:[] };
+                    return { ...baseStory, [subKey]: richText };
                 });
             }
             
@@ -237,7 +231,7 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
             console.error(`Error generating for field ${field}:`, error);
             const errorMessage = error.message || String(error);
             if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-                setApiError('You have exceeded your API quota. Please <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener noreferrer" class="text-red-600 hover:underline font-semibold">check your plan and billing details</a>. You can monitor your usage <a href="https://ai.dev/usage?tab=rate-limit" target="_blank" rel="noopener noreferrer" class="text-red-600 hover:underline font-semibold">here</a>.');
+                setApiError('You have exceeded your API quota. Please <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener noreferrer" class="text-condorito-red hover:underline font-semibold">check your plan and billing details</a>. You can monitor your usage <a href="https://ai.dev/usage?tab=rate-limit" target="_blank" rel="noopener noreferrer" class="text-condorito-red hover:underline font-semibold">here</a>.');
             } else {
                 setApiError('Failed to call the Gemini API. Please try again.');
             }
@@ -250,49 +244,38 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
         }
     }, [localLore, localStory, characterProfiles, setApiError]);
     
-    // --- Location Handlers ---
-    const handleAddLocation = () => {
-        const newLocation: Location = {
-            id: `loc-${Date.now()}`,
-            name: 'Nuevo Lugar',
-            description: ''
-        };
-        setLocalLore(current => {
-            if (!current) {
-                return {
-                    genre: '',
-                    rules: '',
-                    history: '',
-                    locations: [newLocation]
-                };
-            }
-            const newLocations = [...current.locations, newLocation];
-            return { ...current, locations: newLocations };
-        });
-    };
-
-    const handleDeleteLocation = (idToDelete: string) => {
-        if (!localLore) return;
-        const newLocations = localLore.locations.filter(l => l.id !== idToDelete);
-        setLocalLore(current => ({...current!, locations: newLocations}));
-    };
-
-    const handleGenerateLocation = async (locationId: string) => {
-        const loadingKey = `location-${locationId}`;
+    const handleGenerateLocationField = async (locationId: string, field: 'location.name' | 'location.description') => {
+        const location = localLore?.locations.find(l => l.id === locationId);
+        if (!location || !localLore) return;
+    
+        const loadingKey = `${field}-${locationId}`;
         setApiError(null);
         setIsFieldLoading(prev => new Set(prev).add(loadingKey));
+    
         try {
-            const result = await generateLocation(localLore?.genre || 'fantasía');
+            const { text } = await generateNarrativeField(field, { lore: localLore, location });
+            const richText = stringToRichText(text, 'ai');
+    
             setLocalLore(current => {
                 if (!current) return current;
-                const newLocations = current.locations.map(l => 
-                    l.id === locationId ? { ...l, name: result.name, description: result.description } : l
-                );
+                const newLocations = current.locations.map(l => {
+                    if (l.id === locationId) {
+                        const fieldToUpdate = field.split('.')[1] as 'name' | 'description';
+                        return { ...l, [fieldToUpdate]: richText };
+                    }
+                    return l;
+                });
                 return { ...current, locations: newLocations };
             });
+    
         } catch (error: any) {
-            console.error(`Error generating location ${locationId}:`, error);
-            setApiError('Failed to generate location details. Please try again.');
+            console.error(`Error generating for field ${field}:`, error);
+            const errorMessage = error.message || String(error);
+            if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+                setApiError('You have exceeded your API quota. Please <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener noreferrer" class="text-condorito-red hover:underline font-semibold">check your plan and billing details</a>. You can monitor your usage <a href="https://ai.dev/usage?tab=rate-limit" target="_blank" rel="noopener noreferrer" class="text-condorito-red hover:underline font-semibold">here</a>.');
+            } else {
+                setApiError('Failed to call the Gemini API. Please try again.');
+            }
         } finally {
             setIsFieldLoading(prev => {
                 const newSet = new Set(prev);
@@ -302,10 +285,96 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
         }
     };
 
+    // --- Location Handlers ---
+    const handleAddLocation = () => {
+        const newLocation: Location = {
+            id: `loc-${Date.now()}`,
+            name: stringToRichText('Nuevo Lugar', 'user'),
+            description: [{text: '', source: 'user'}]
+        };
+        setLocalLore(current => {
+            const currentLore = current || EMPTY_LORE;
+            const newLocations = [...currentLore.locations, newLocation];
+            return { ...currentLore, locations: newLocations };
+        });
+    };
+
+    const handleDeleteLocation = (idToDelete: string) => {
+        setLocalLore(current => {
+            if (!current) return current;
+            const newLocations = current.locations.filter(l => l.id !== idToDelete);
+            return { ...current, locations: newLocations };
+        });
+    };
+
+    const handleGenerateImageForLocation = async (locationId: string) => {
+        const location = localLore?.locations.find(l => l.id === locationId);
+        if (!location || !localLore) return;
+    
+        const loadingKey = `image-${locationId}`;
+        setApiError(null);
+        setIsImageLoading(prev => new Set(prev).add(loadingKey));
+    
+        try {
+            const imageB64 = await generateLocationImage(richTextToString(location.name), richTextToString(location.description), richTextToString(localLore.genre));
+            setLocalLore(current => {
+                if (!current) return current;
+                const newLocations = current.locations.map(l => 
+                    l.id === locationId ? { ...l, imageB64 } : l
+                );
+                return { ...current, locations: newLocations };
+            });
+        } catch (error: any) {
+            console.error(`Error generating image for location ${locationId}:`, error);
+            setApiError('Failed to generate location image. Please try again.');
+        } finally {
+            setIsImageLoading(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(loadingKey);
+                return newSet;
+            });
+        }
+    };
+    
+    const handleGenerateLocation = async (locationId: string) => {
+        const loadingKeyText = `location-${locationId}`;
+        const loadingKeyImage = `image-${locationId}`;
+        setApiError(null);
+        setIsFieldLoading(prev => new Set(prev).add(loadingKeyText));
+        setIsImageLoading(prev => new Set(prev).add(loadingKeyImage));
+        try {
+            const genreStr = richTextToString(localLore?.genre) || 'fantasía';
+            const { name, description } = await generateLocation(genreStr);
+            const imageB64 = await generateLocationImage(name, description, genreStr);
+
+            setLocalLore(current => {
+                if (!current) return current;
+                const newLocations = current.locations.map(l => 
+                    l.id === locationId ? { ...l, name: stringToRichText(name, 'ai'), description: stringToRichText(description, 'ai'), imageB64 } : l
+                );
+                return { ...current, locations: newLocations };
+            });
+        } catch (error: any) {
+            console.error(`Error generating location ${locationId}:`, error);
+            setApiError('Failed to generate location details. Please try again.');
+        } finally {
+             setIsFieldLoading(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(loadingKeyText);
+                return newSet;
+            });
+            setIsImageLoading(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(loadingKeyImage);
+                return newSet;
+            });
+        }
+    };
+
 
     return (
         <div className="flex flex-col h-full bg-white">
-            <div className="flex border-b border-[#FDEFE2] bg-[#FDEFE2]/80">
+            <div className="flex border-b border-panel-header bg-panel-header/80">
                 <MainTabButton tabName="lore" label="Universo" activeTab={activeTab} setActiveTab={setActiveTab} />
                 <MainTabButton tabName="story" label="Historia" activeTab={activeTab} setActiveTab={setActiveTab} />
             </div>
@@ -314,67 +383,121 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
                 {activeTab === 'lore' && (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-lg text-[#593A2D]">Universo (Lore)</h3>
-                            <button onClick={() => handleGenerate('lore', { genreSuggestion: localLore?.genre })} disabled={!!isLoading} className="px-3 py-1.5 text-xs font-semibold bg-red-500 text-white rounded-md hover:bg-red-600 disabled:bg-[#D6A27E] transition">{isLoading === 'lore' ? '...' : '🎲 Randomizar'}</button>
+                            <h3 className="font-bold text-sm text-condorito-brown">Universo (Lore)</h3>
+                            <button onClick={() => handleGenerate('lore', { genreSuggestion: richTextToString(localLore?.genre) })} disabled={!!isLoading} className="relative overflow-hidden px-3 py-1.5 text-xs font-semibold bg-condorito-red text-white rounded-md hover:brightness-95 disabled:bg-panel-border transition">
+                              <span className="relative z-10">{isLoading === 'lore' ? 'Generating...' : '🎲 Randomizar'}</span>
+                              {isLoading === 'lore' && <div className="absolute inset-0 loading-bar-shimmer"></div>}
+                            </button>
                         </div>
                         
                         <div className="grid grid-cols-2 gap-2">
-                            <button onClick={handleInitiateSaveLorePreset} className="w-full px-3 py-2 text-sm font-semibold bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"> Guardar Universo </button>
-                            <button onClick={() => { setShowLorePresets(s => !s); setIsNamingLorePreset(false); }} className="w-full px-3 py-2 text-sm font-semibold bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"> {showLorePresets ? 'Ocultar' : 'Cargar Universo'} </button>
+                            <button onClick={handleInitiateSaveLorePreset} className="w-full px-3 py-2 text-xs font-semibold bg-condorito-wood text-white rounded-md hover:brightness-95 transition-colors"> Guardar Universo </button>
+                            <button onClick={() => { setShowLorePresets(s => !s); setIsNamingLorePreset(false); }} className="w-full px-3 py-2 text-xs font-semibold bg-condorito-gray text-white rounded-md hover:brightness-95 transition-colors"> {showLorePresets ? 'Ocultar' : 'Cargar Universo'} </button>
                         </div>
 
-                        {isNamingLorePreset && ( <div className="p-3 bg-[#FFFBF7] rounded-lg border border-[#FDEFE2] space-y-2"> <h4 className="font-semibold text-sm text-[#8C5A3A]">Guardar nuevo universo</h4> <input type="text" value={lorePresetNameInput} onChange={e => setLorePresetNameInput(e.target.value)} placeholder="Nombre del preset..." className="w-full p-2 border border-[#FDEFE2] rounded-md text-sm bg-white focus:ring-1 focus:ring-red-500" autoFocus /> <div className="flex gap-2"> <button onClick={handleConfirmSaveLorePreset} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-green-500 text-white rounded-md hover:bg-green-600">Confirmar</button> <button onClick={() => setIsNamingLorePreset(false)} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancelar</button> </div> </div> )}
+                        {isNamingLorePreset && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Guardar nuevo universo</h4> <input type="text" value={lorePresetNameInput} onChange={e => setLorePresetNameInput(e.target.value)} placeholder="Nombre del preset..." className="w-full p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red" autoFocus /> <div className="flex gap-2"> <button onClick={handleConfirmSaveLorePreset} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-condorito-green text-white rounded-md hover:brightness-95">Confirmar</button> <button onClick={() => setIsNamingLorePreset(false)} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancelar</button> </div> </div> )}
 
-                        {showLorePresets && ( <div className="p-3 bg-[#FFFBF7] rounded-lg border border-[#FDEFE2] space-y-2"> <h4 className="font-semibold text-sm text-[#8C5A3A]">Universos Guardados</h4> {lorePresets.length === 0 ? ( <p className="text-xs text-center text-[#8C5A3A] py-2">No hay universos guardados.</p> ) : ( <div className="max-h-32 overflow-y-auto space-y-1 pr-1"> {lorePresets.map(preset => ( <div key={preset.name} className="flex items-center justify-between p-1.5 rounded-lg bg-[#FDEFE2] group"> <button onClick={() => handleLoadLorePreset(preset.lore)} className="text-left text-sm text-[#593A2D] flex-grow hover:text-red-600">{preset.name}</button> <button onClick={() => handleDeleteLorePreset(preset.name)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-red-100" title={`Eliminar ${preset.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg> </button> </div> ))} </div> )} </div> )}
+                        {showLorePresets && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Universos Guardados</h4> {lorePresets.length === 0 ? ( <p className="text-xs text-center text-condorito-brown py-2">No hay universos guardados.</p> ) : ( <div className="max-h-32 overflow-y-auto space-y-1 pr-1"> {lorePresets.map(preset => ( <div key={preset.name} className="flex items-center justify-between p-1.5 rounded-lg bg-panel-header group"> <button onClick={() => handleLoadLorePreset(preset.lore)} className="text-left text-xs text-condorito-brown flex-grow hover:text-condorito-red">{preset.name}</button> <button onClick={() => handleDeleteLorePreset(preset.name)} className="text-condorito-red opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-condorito-red/20" title={`Eliminar ${preset.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg> </button> </div> ))} </div> )} </div> )}
                         
-                        <div className="flex gap-2 p-1 bg-[#FDEFE2] rounded-lg">
+                        <div className="flex gap-2 p-1 bg-panel-header rounded-lg">
                             <SubTabButton label="Núcleo" active={activeSubTabs.lore === 'core'} onClick={() => setActiveSubTabs(s => ({...s, lore: 'core'}))} />
                             <SubTabButton label="Lugares" active={activeSubTabs.lore === 'locations'} onClick={() => setActiveSubTabs(s => ({...s, lore: 'locations'}))} />
                         </div>
-                        {activeSubTabs.lore === 'core' && <div className="space-y-3 p-3 bg-[#FFFBF7] rounded-b-lg">
-                            <TextInput label="Género" value={localLore?.genre} onChange={v => setLocalLore(l => ({...(l!), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.genre')} isGenerating={isFieldLoading.has('lore.genre')} />
-                            <TextArea label="Reglas del Mundo" value={localLore?.rules} onChange={v => setLocalLore(l => ({...(l!), rules: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.rules')} isGenerating={isFieldLoading.has('lore.rules')} />
-                            <TextArea label="Historia del Mundo" value={localLore?.history} onChange={v => setLocalLore(l => ({...(l!), history: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.history')} isGenerating={isFieldLoading.has('lore.history')} />
+                        {activeSubTabs.lore === 'core' && <div className="space-y-3 p-3 bg-panel-back rounded-b-lg">
+                            <RichTextEditor isSingleLine label="Género" value={localLore?.genre} onChange={v => setLocalLore(l => ({...(l || EMPTY_LORE), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.genre')} isGenerating={isFieldLoading.has('lore.genre')} />
+                            <RichTextEditor label="Reglas del Mundo" value={localLore?.rules} onChange={v => setLocalLore(l => ({...(l || EMPTY_LORE), rules: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.rules')} isGenerating={isFieldLoading.has('lore.rules')} />
+                            <RichTextEditor label="Historia del Mundo" value={localLore?.history} onChange={v => setLocalLore(l => ({...(l || EMPTY_LORE), history: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('lore.history')} isGenerating={isFieldLoading.has('lore.history')} />
                         </div>}
                         {activeSubTabs.lore === 'locations' && (
-                            <div className="p-3 bg-[#FFFBF7] rounded-b-lg space-y-4">
-                                {(localLore?.locations || []).map((loc, index) => (
-                                    <div key={loc.id} className="p-3 border border-[#FDEFE2] rounded-lg space-y-3 bg-white">
-                                        <div className="flex justify-between items-center">
-                                            <h4 className="font-bold text-sm text-red-700">Lugar #{index + 1}</h4>
-                                            <div className="flex items-center gap-2">
-                                                <button onClick={() => handleGenerateLocation(loc.id)} disabled={isFieldLoading.has(`location-${loc.id}`)} className="p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 disabled:bg-[#FDEFE2] disabled:text-[#D6A27E] disabled:cursor-wait transition-colors" title="Randomizar Lugar">
-                                                    <DiceIcon className={`w-4 h-4 ${isFieldLoading.has(`location-${loc.id}`) ? 'animate-spin' : ''}`} />
-                                                </button>
-                                                <button onClick={() => handleDeleteLocation(loc.id)} className="p-1.5 text-gray-400 hover:bg-red-100 hover:text-red-600 rounded-full transition-colors" title="Eliminar Lugar">
-                                                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
-                                                </button>
+                            <div className="p-3 bg-panel-back rounded-b-lg space-y-4">
+                                {(localLore?.locations || []).map((loc, index) => {
+                                    const isImgLoading = isImageLoading.has(`image-${loc.id}`);
+                                    const isTextLoading = isFieldLoading.has(`location-${loc.id}`);
+                                    const isNameLoading = isFieldLoading.has(`location.name-${loc.id}`);
+                                    const isDescLoading = isFieldLoading.has(`location.description-${loc.id}`);
+
+                                    return (
+                                        <div key={loc.id} className="p-3 border border-panel-header rounded-lg bg-white">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <h4 className="font-bold text-xs text-condorito-red">Lugar #{index + 1}</h4>
+                                                <div className="flex items-center gap-2">
+                                                    <button onClick={() => handleGenerateLocation(loc.id)} disabled={isTextLoading || isImgLoading} className="p-1.5 bg-condorito-red/10 text-condorito-red rounded-full hover:bg-condorito-red/20 disabled:bg-panel-header disabled:text-panel-border disabled:cursor-wait transition-colors" title="Randomizar Lugar y Imagen">
+                                                        <DiceIcon className={`w-4 h-4 ${isTextLoading || isImgLoading ? 'animate-spin' : ''}`} />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteLocation(loc.id)} className="p-1.5 text-gray-400 hover:bg-condorito-red/10 hover:text-condorito-red rounded-full transition-colors" title="Eliminar Lugar">
+                                                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-4 items-start">
+                                                <div className="w-1/3 flex-shrink-0">
+                                                    <div className="aspect-video w-full bg-panel-header rounded-md flex items-center justify-center relative overflow-hidden">
+                                                        {isImgLoading && (
+                                                            <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+                                                                <DiceIcon className="w-8 h-8 text-condorito-red animate-spin" />
+                                                            </div>
+                                                        )}
+                                                        {loc.imageB64 && !isImgLoading ? (
+                                                            <img src={`data:image/png;base64,${loc.imageB64}`} alt={richTextToString(loc.name)} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            !isImgLoading && (
+                                                                <div className="text-center text-condorito-brown p-2">
+                                                                    <ImageIcon className="w-10 h-10 mx-auto opacity-50" />
+                                                                    <button onClick={() => handleGenerateImageForLocation(loc.id)} className="mt-2 text-xs bg-condorito-red text-white font-semibold px-2 py-1 rounded-md hover:brightness-95 transition">
+                                                                        Generar Imagen
+                                                                    </button>
+                                                                </div>
+                                                            )
+                                                        )}
+                                                    </div>
+                                                    {loc.imageB64 && !isImgLoading && (
+                                                        <button
+                                                            onClick={() => handleGenerateImageForLocation(loc.id)}
+                                                            disabled={isImgLoading}
+                                                            className="w-full mt-2 flex items-center justify-center gap-2 text-xs bg-condorito-red/10 text-condorito-red font-semibold px-2 py-1 rounded-md hover:bg-condorito-red/20 transition disabled:bg-gray-200 disabled:text-gray-500"
+                                                        >
+                                                            <DiceIcon className={`w-3 h-3 ${isImgLoading ? 'animate-spin' : ''}`} />
+                                                            Regenerar Imagen
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="w-2/3 space-y-3">
+                                                    <RichTextEditor
+                                                        isSingleLine
+                                                        label="Nombre del Lugar" 
+                                                        value={loc.name}
+                                                        onChange={v => {
+                                                            setLocalLore(current => {
+                                                                if (!current) return current;
+                                                                const newLocations = current.locations.map(l => l.id === loc.id ? { ...l, name: v } : l);
+                                                                return { ...current, locations: newLocations };
+                                                            });
+                                                        }}
+                                                        onBlur={syncStateToParent}
+                                                        onGenerate={() => handleGenerateLocationField(loc.id, 'location.name')}
+                                                        isGenerating={isNameLoading}
+                                                    />
+                                                    <RichTextEditor
+                                                        label="Descripción del Lugar" 
+                                                        value={loc.description}
+                                                        rows={4}
+                                                        onChange={v => {
+                                                            setLocalLore(current => {
+                                                                if (!current) return current;
+                                                                const newLocations = current.locations.map(l => l.id === loc.id ? { ...l, description: v } : l);
+                                                                return { ...current, locations: newLocations };
+                                                            });
+                                                        }}
+                                                        onBlur={syncStateToParent}
+                                                        onGenerate={() => handleGenerateLocationField(loc.id, 'location.description')}
+                                                        isGenerating={isDescLoading}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
-                                        <TextInput 
-                                            label="Nombre del Lugar" 
-                                            value={loc.name}
-                                            onChange={v => {
-                                                if (!localLore) return;
-                                                const newLocations = localLore.locations.map(l => l.id === loc.id ? { ...l, name: v } : l);
-                                                setLocalLore(current => ({ ...current!, locations: newLocations }));
-                                            }}
-                                            onBlur={syncStateToParent}
-                                        />
-                                        <TextArea 
-                                            label="Descripción del Lugar" 
-                                            value={loc.description}
-                                            rows={2}
-                                            onChange={v => {
-                                                if (!localLore) return;
-                                                const newLocations = localLore.locations.map(l => l.id === loc.id ? { ...l, description: v } : l);
-                                                setLocalLore(current => ({ ...current!, locations: newLocations }));
-                                            }}
-                                            onBlur={syncStateToParent}
-                                        />
-                                    </div>
-                                ))}
-                                <button onClick={handleAddLocation} className="w-full py-2 text-sm font-semibold bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors">+ Añadir Nuevo Lugar</button>
+                                    )
+                                })}
+                                <button onClick={handleAddLocation} className="w-full py-2 text-xs font-semibold bg-condorito-green text-white rounded-md hover:brightness-95 transition-colors">+ Añadir Nuevo Lugar</button>
                             </div>
                         )}
                     </div>
@@ -382,36 +505,37 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
                 
                 {activeTab === 'story' && (
                      <div className="space-y-4">
-                        <h3 className="font-bold text-lg text-[#593A2D]">Historia</h3>
-                        <div className="flex gap-2 p-1 bg-[#FDEFE2] rounded-lg">
+                        <h3 className="font-bold text-sm text-condorito-brown">Historia</h3>
+                        <div className="flex gap-2 p-1 bg-panel-header rounded-lg">
                             <SubTabButton label="Premisa" active={activeSubTabs.story === 'premise'} onClick={() => setActiveSubTabs(s => ({...s, story: 'premise'}))} />
                             <SubTabButton label="Trama" active={activeSubTabs.story === 'plot'} onClick={() => setActiveSubTabs(s => ({...s, story: 'plot'}))} />
                         </div>
 
-                        {activeSubTabs.story === 'premise' && <div className="space-y-4 p-3 bg-[#FFFBF7] rounded-b-lg">
-                            {/* FIX: Corrected default object in setLocalStory to include all required properties of the Story type. */}
-                            <TextInput label="Género de la Historia" value={localStory?.genre} onChange={v => setLocalStory(s => ({...(s || { genre: '', stakes: '', characterProfileIds:[], storyCircle:[] }), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('story.genre')} isGenerating={isFieldLoading.has('story.genre')}/>
-                            {/* FIX: Corrected default object in setLocalStory to include all required properties of the Story type. */}
-                            <TextArea label="Qué está en juego (Stakes)" value={localStory?.stakes} onChange={v => setLocalStory(s => ({...(s || { genre: '', stakes: '', characterProfileIds:[], storyCircle:[] }), stakes: v}))} onBlur={syncStateToParent} rows={2} onGenerate={() => handleGenerateField('story.stakes')} isGenerating={isFieldLoading.has('story.stakes')}/>
+                        {activeSubTabs.story === 'premise' && <div className="space-y-4 p-3 bg-panel-back rounded-b-lg">
+                            <RichTextEditor isSingleLine label="Género de la Historia" value={localStory?.genre} onChange={v => setLocalStory(s => ({...(s || { genre: [], stakes: [], characterProfileIds:[], storyCircle:[] }), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('story.genre')} isGenerating={isFieldLoading.has('story.genre')}/>
+                            <RichTextEditor label="Qué está en juego (Stakes)" value={localStory?.stakes} onChange={v => setLocalStory(s => ({...(s || { genre: [], stakes: [], characterProfileIds:[], storyCircle:[] }), stakes: v}))} onBlur={syncStateToParent} rows={2} onGenerate={() => handleGenerateField('story.stakes')} isGenerating={isFieldLoading.has('story.stakes')}/>
                             <div className="space-y-2">
-                                <h4 className="font-semibold text-xs text-[#8C5A3A]">Personajes en la Historia</h4>
+                                <h4 className="font-semibold text-xs text-condorito-brown">Personajes en la Historia</h4>
                                 {characterProfiles.length === 0 ? (
-                                    <p className="text-xs text-[#8C5A3A]">Crea personajes en el <button onClick={() => togglePanel('CharacterEditor')} className="text-red-600 hover:underline">Editor de Personajes</button> para poder añadirlos a la historia.</p>
+                                    <p className="text-xs text-condorito-brown">Crea personajes en el <button onClick={() => togglePanel('CharacterEditor')} className="text-condorito-red hover:underline">Editor de Personajes</button> para poder añadirlos a la historia.</p>
                                 ): characterProfiles.map(c => (
                                     <div key={c.id} className="flex items-center gap-2"><input type="checkbox" id={`char-check-${c.id}`} checked={localStory?.characterProfileIds.includes(c.id) || false} onChange={e => {
                                         const ids = localStory?.characterProfileIds || [];
                                         const newIds = e.target.checked ? [...ids, c.id] : ids.filter(id => id !== c.id);
-                                        setLocalStory(s => ({...(s || { genre: '', stakes: '', storyCircle: [] }), characterProfileIds: newIds}));
-                                    }} onBlur={syncStateToParent} className="h-4 w-4 rounded border-[#FDEFE2] text-red-600 focus:ring-red-500" /><label htmlFor={`char-check-${c.id}`} className="select-none text-sm">{c.name}</label></div>
+                                        setLocalStory(s => ({...(s || { genre: [], stakes: [], storyCircle: [] }), characterProfileIds: newIds}));
+                                    }} onBlur={syncStateToParent} className="h-4 w-4 rounded border-panel-header text-condorito-red focus:ring-condorito-red" /><label htmlFor={`char-check-${c.id}`} className="select-none text-xs">{richTextToString(c.name)}</label></div>
                                 ))}
                             </div>
-                            <button onClick={() => handleGenerate('story', { characterIds: localStory?.characterProfileIds, genre: localStory?.genre, stakes: localStory?.stakes })} disabled={!lore || (localStory?.characterProfileIds || []).length === 0 || !!isLoading} className="w-full bg-red-500 text-white font-semibold py-2 rounded-md hover:bg-red-600 disabled:bg-[#D6A27E] disabled:cursor-not-allowed transition">{isLoading === 'story' ? 'Generando...' : '🎲 Generar Trama'}</button>
+                            <button onClick={() => handleGenerate('story', { characterIds: localStory?.characterProfileIds, genre: localStory?.genre, stakes: localStory?.stakes })} disabled={!lore || (localStory?.characterProfileIds || []).length === 0 || !!isLoading} className="w-full relative overflow-hidden bg-condorito-red text-white font-semibold py-2 rounded-md hover:brightness-95 disabled:bg-panel-border disabled:cursor-not-allowed transition">
+                              <span className="relative z-10">{isLoading === 'story' ? 'Generating...' : '🎲 Generar Trama'}</span>
+                              {isLoading === 'story' && <div className="absolute inset-0 loading-bar-shimmer"></div>}
+                            </button>
                         </div>}
 
-                        {activeSubTabs.story === 'plot' && <div className="p-3 bg-[#FFFBF7] rounded-b-lg">
+                        {activeSubTabs.story === 'plot' && <div className="p-3 bg-panel-back rounded-b-lg">
                             {story?.storyCircle ? <div className="space-y-3">
-                                {story.storyCircle.sort((a,b) => a.step - b.step).map(s => <div key={s.step}><strong className="text-xs uppercase font-bold text-red-700">{s.step}. {s.title}</strong><p className="text-sm text-[#8C5A3A] mt-1">{s.description}</p></div>)}
-                            </div> : <p className="text-sm text-center text-[#8C5A3A] py-4">Genere una premisa para ver la trama aquí.</p>}
+                                {story.storyCircle.sort((a,b) => a.step - b.step).map(s => <div key={s.step}><strong className="text-xs uppercase font-bold text-condorito-red">{s.step}. {s.title}</strong><p className="text-xs text-condorito-brown mt-1">{s.description}</p></div>)}
+                            </div> : <p className="text-xs text-center text-condorito-brown py-4">Genere una premisa para ver la trama aquí.</p>}
                         </div>}
                     </div>
                 )}

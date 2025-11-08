@@ -15,15 +15,15 @@ const Slider: React.FC<SliderProps> = ({ label, min, max, step, value, onChange,
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
-        <label htmlFor={label} className="text-sm font-medium text-[#8C5A3A]">
+        <label htmlFor={label} className="text-xs font-medium text-condorito-brown select-none">
           {label}
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-red-600 font-mono bg-[#FDEFE2] px-2 py-0.5 rounded text-sm">{value}</span>
+          <span className="text-condorito-red font-mono bg-panel-header px-2 py-0.5 rounded text-xs">{value}</span>
           {onRandomize && (
             <button
                 onClick={onRandomize}
-                className="p-1 text-red-600 rounded-full hover:bg-red-100 transition-colors"
+                className="p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors"
                 aria-label={`Randomize ${label}`}
                 title={`Randomize ${label}`}
             >
@@ -40,7 +40,7 @@ const Slider: React.FC<SliderProps> = ({ label, min, max, step, value, onChange,
         step={step}
         value={value}
         onChange={onChange}
-        className="w-full h-2 bg-[#FDEFE2] rounded-lg appearance-none cursor-pointer accent-red-500"
+        className="w-full h-2 bg-panel-header rounded-lg appearance-none cursor-pointer accent-condorito-red"
       />
     </div>
   );

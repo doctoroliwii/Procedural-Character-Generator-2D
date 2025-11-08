@@ -6,20 +6,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Plop!</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500&display=swap" rel="stylesheet">
     <style>
       /* Custom scrollbar for a better look */
       ::-webkit-scrollbar {
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #FDEFE2; /* light skin tone */
+        background: #FDEFE2; /* panel-header */
       }
       ::-webkit-scrollbar-thumb {
-        background: #D6A27E; /* medium skin tone */
+        background: #D6A27E; /* panel-border */
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #BF8C69; /* darker skin tone */
+        background: #A16A50; /* condorito-wood */
+      }
+      @keyframes fill-progress {
+        from { width: 0%; }
+        to { width: 100%; }
+      }
+      .loading-bar-progress {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background-color: transparent;
+      }
+      .loading-bar-progress::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 0%;
+        background-color: #7E8A63; /* condorito-green */
+        animation: fill-progress 20s linear forwards;
+      }
+      .plop-logo-outline {
+        text-shadow:
+          -1.5px -1.5px 0 #4A2E2C,
+           1.5px -1.5px 0 #4A2E2C,
+          -1.5px  1.5px 0 #4A2E2C,
+           1.5px  1.5px 0 #4A2E2C;
       }
     </style>
   <script type="importmap">
@@ -32,8 +62,31 @@
   }
 }
 </script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'fredoka': ['Fredoka', 'sans-serif'],
+          },
+          colors: {
+            'condorito-red': '#D84949',
+            'condorito-brown': '#4A2E2C',
+            'condorito-pink': '#FBE5D5',
+            'condorito-gray': '#B0A8A7',
+            'condorito-green': '#7E8A63',
+            'condorito-skin': '#E97356',
+            'condorito-wood': '#A16A50',
+            'panel-back': '#FEFDFB',
+            'panel-header': '#FDEFE2',
+            'panel-border': '#D6A27E',
+          }
+        }
+      }
+    }
+  </script>
 </head>
-  <body class="bg-[#FFFBF7] text-[#593A2D]">
+  <body class="bg-condorito-pink text-condorito-brown">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

@@ -194,8 +194,34 @@ const Character: React.FC<{
         const localCursorX = (localCursorPos.x - (VIEWBOX_WIDTH_BASE / 2 + charInstance.x)) / charInstance.scale + (VIEWBOX_WIDTH_BASE / 2);
         const localCursorY = (localCursorPos.y - (VIEWBOX_HEIGHT / 2 + charInstance.y)) / charInstance.scale + (VIEWBOX_HEIGHT / 2);
         
-        const getPupilOffset = (eyeCenterX: number, eyeCenterY: number) => { if (!eyeTracking) return { x: 0, y: 0 }; const dx = localCursorX - eyeCenterX; const dy = localCursorY - eyeCenterY; const angle = Math.atan2(dy, dx); const dist = Math.sqrt(dx * dx + dy * dy); const maxTravelX = irisRx - pupilRx; const maxTravelY = irisRy - pupilRy; const effectiveDist = headWidth * 0.6; const ratio = Math.min(1, dist / effectiveDist); return { x: Math.cos(angle) * maxTravelX * ratio, y: Math.sin(angle) * maxTravelY * ratio, }; };
-        const leftPupilOffset = getPupilOffset(leftEyeX, eyeYPos); const rightPupilOffset = getPupilOffset(rightEyeX, eyeYPos);
+        const getPupilOffset = (eyeCenterX: number, eyeCenterY: number) => {
+            let targetX: number | undefined;
+            let targetY: number | undefined;
+
+            if (charInstance.lookAt) {
+                targetX = charInstance.lookAt.x;
+                targetY = charInstance.lookAt.y;
+            } else if (eyeTracking) {
+                targetX = localCursorX;
+                targetY = localCursorY;
+            }
+
+            if (targetX === undefined || targetY === undefined) {
+                return { x: 0, y: 0 };
+            }
+
+            const dx = targetX - eyeCenterX;
+            const dy = targetY - eyeCenterY;
+            const angle = Math.atan2(dy, dx);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxTravelX = irisRx - pupilRx;
+            const maxTravelY = irisRy - pupilRy;
+            const effectiveDist = headWidth * 0.6;
+            const ratio = Math.min(1, dist / effectiveDist);
+            return { x: Math.cos(angle) * maxTravelX * ratio, y: Math.sin(angle) * maxTravelY * ratio, };
+        };
+        const leftPupilOffset = getPupilOffset(leftEyeX, eyeYPos);
+        const rightPupilOffset = getPupilOffset(rightEyeX, eyeYPos);
         const eyelidCompensationY = (eyeRy * (upperEyelidCoverage / 100)) * 0.4; 
         const glintRadius = calculatedEyeSize * 0.2; 
         const glintOffsetX = eyeRx * 0.3; 

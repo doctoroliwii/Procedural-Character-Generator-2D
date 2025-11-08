@@ -9,12 +9,14 @@ interface MenuBarProps {
   onMenuItemClick: (key: PanelKey) => void;
   handleImport: (type: 'lore' | 'characters' | 'story') => void;
   handleExport: (type: 'lore' | 'characters' | 'story') => void;
+  onExportComic: () => void;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport, onExportComic }) => {
   const fileItems = [
     { label: 'Randomize Character', action: onRandomize },
     { label: 'Randomize Comic', action: onRandomizeComic, disabled: isRandomizingComic },
+    { label: 'Exportar Cómic', action: onExportComic },
     {
       label: 'Importar',
       subItems: [
@@ -42,17 +44,21 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRand
     { label: 'Editor de Cómics', action: () => onMenuItemClick('Comic') }
   ];
   const viewItems = [{ label: 'Opciones', action: () => onMenuItemClick('Options') }];
-  const helpItems = [{ label: 'Acerca de', action: () => onMenuItemClick('About') }];
 
   return (
-    <header className="flex-shrink-0 bg-[#FDEFE2]/80 w-full px-2 py-1 flex items-center border-b border-[#D6A27E]/60 shadow-sm z-50">
-       <h1 className="text-xl font-bold text-red-700 mr-6 select-none">Plop!</h1>
+    <header className="flex-shrink-0 bg-panel-header/80 w-full px-2 py-1 flex items-center border-b border-panel-border/60 shadow-sm z-50">
+       <button 
+        onClick={() => onMenuItemClick('About')} 
+        className="mr-6 focus:outline-none focus:ring-2 focus:ring-condorito-red focus:ring-offset-2 rounded-sm"
+        aria-label="About Plop!"
+       >
+        <h1 className="text-base font-bold font-fredoka text-condorito-red select-none plop-logo-outline">Plop!</h1>
+      </button>
       <Menu title="File" items={fileItems} />
       <Menu title="Universo" items={universeItems} />
       <Menu title="Personajes" items={characterItems} />
       <Menu title="Cómics" items={comicItems} />
       <Menu title="View" items={viewItems} />
-      <Menu title="Help" items={helpItems} />
     </header>
   );
 };

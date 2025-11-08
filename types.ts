@@ -75,6 +75,7 @@ export interface CharacterInstance {
   scale: number;
   zIndex: number;
   isFlipped?: boolean;
+  lookAt?: { x: number; y: number };
 }
 
 export interface ParamConfig {
@@ -115,48 +116,57 @@ export interface ComicPanelData {
   backgroundColor: string;
   description: string;
   shotType: 'close-up' | 'medium-shot' | 'full-shot';
+  backgroundImageB64?: string;
 }
 
 // --- NEW NARRATIVE SYSTEM TYPES ---
 
+export interface Segment {
+  text: string;
+  source: 'user' | 'ai';
+}
+export type RichText = Segment[];
+
+
 export interface Location {
   id: string;
-  name: string;
-  description: string;
+  name: RichText;
+  description: RichText;
+  imageB64?: string;
 }
 
 export interface Lore {
-  genre: string;
-  rules: string;
+  genre: RichText;
+  rules: RichText;
   locations: Location[];
-  history: string;
+  history: RichText;
 }
 
 export interface Psychology {
-  motivation: string;
-  fear: string;
-  virtues: string;
-  flaws: string;
-  archetype: string;
+  motivation: RichText;
+  fear: RichText;
+  virtues: RichText;
+  flaws: RichText;
+  archetype: RichText;
 }
 
 export interface Backstory {
-  origin: string;
-  wound: string;
-  journey: string;
-  initialState: string;
+  origin: RichText;
+  wound: RichText;
+  journey: RichText;
+  initialState: RichText;
 }
 
 export interface CharacterProfile {
   id: string;
-  name: string;
-  age: string;
-  species: string;
-  occupation: string;
+  name: RichText;
+  age: RichText;
+  species: RichText;
+  occupation: RichText;
   originLocationId: string;
   psychology: Psychology;
-  skills: string;
-  limitations: string;
+  skills: RichText;
+  limitations: RichText;
   backstory: Backstory;
   characterParams?: CharacterParams;
 }
@@ -168,8 +178,8 @@ export interface StoryCircleStep {
 }
 
 export interface Story {
-  genre: string;
-  stakes: string;
+  genre: RichText;
+  stakes: RichText;
   characterProfileIds: string[];
   storyCircle: StoryCircleStep[];
 }

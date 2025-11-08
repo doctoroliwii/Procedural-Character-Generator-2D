@@ -1,5 +1,5 @@
 {
-  "name": "Procedural 2D Character Creator",
+  "name": "Plop! Procedural 2D Character Creator",
   "description": "A web application to procedurally create 2D characters. Users can modify various body parts, including detailed eyes and new components like neck, hands, and feet, using a tab-based slider interface. Features an advanced HSL color picker for granular control over character appearance.",
   "requestFramePermissions": []
 }
