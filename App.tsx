@@ -184,10 +184,12 @@ function App() {
   const [comicPanels, setComicPanels] = useState<ComicPanelData[] | null>(null);
   const [isGeneratingComic, setIsGeneratingComic] = useState(false);
   const [isRandomizingComic, setIsRandomizingComic] = useState(false);
+  const [isGeneratingSimpleCharacters, setIsGeneratingSimpleCharacters] = useState(false);
   const [comicAspectRatio, setComicAspectRatio] = useState<'1:1' | '16:9' | '9:16'>('1:1');
   const [minComicFontSize, setMinComicFontSize] = useState(12);
   const [maxComicFontSize, setMaxComicFontSize] = useState(18);
   const [comicLanguage, setComicLanguage] = useState('es');
+  const [comicFontFamily, setComicFontFamily] = useState('Comic Neue');
   
   // Custom Comic State
   const [comicMode, setComicMode] = useState<'simple' | 'custom'>('simple');
@@ -660,35 +662,49 @@ function App() {
   }, [lore, characterProfiles]);
   
   const handleGenerateSimpleCharacters = useCallback(async (count: number) => {
-    const namePromises = [];
-    for (let i = 0; i < count; i++) {
-        namePromises.push(generateCharacterName('a funny comic', comicLanguage));
-    }
-    const generatedNames = await Promise.all(namePromises);
+    setIsGeneratingSimpleCharacters(true);
+    setApiError(null);
+    try {
+      const namePromises = [];
+      for (let i = 0; i < count; i++) {
+          namePromises.push(generateCharacterName('a funny comic', comicLanguage));
+      }
+      const generatedNames = await Promise.all(namePromises);
 
-    const newProfiles: CharacterProfile[] = [];
-    for (let i = 0; i < count; i++) {
-        const randomParams = generateRandomParams();
-        randomParams.bodyOutlines = true;
-        randomParams.eyeOutlines = true;
-        randomParams.eyeTracking = false;
-        newProfiles.push({
-            id: `char-simple-${Date.now()}-${i}`,
-            name: stringToRichText(generatedNames[i] || `Personaje ${i + 1}`),
-            age: emptyRichText(), species: emptyRichText(), occupation: emptyRichText(), originLocationId: '',
-            psychology: { motivation: emptyRichText(), fear: emptyRichText(), virtues: emptyRichText(), flaws: emptyRichText(), archetype: emptyRichText() },
-            skills: emptyRichText(), limitations: emptyRichText(),
-            backstory: { origin: emptyRichText(), wound: emptyRichText(), journey: emptyRichText(), initialState: emptyRichText() },
-            characterParams: randomParams
-        });
+      const newProfiles: CharacterProfile[] = [];
+      for (let i = 0; i < count; i++) {
+          const randomParams = generateRandomParams();
+          randomParams.bodyOutlines = true;
+          randomParams.eyeOutlines = true;
+          randomParams.eyeTracking = false;
+          newProfiles.push({
+              id: `char-simple-${Date.now()}-${i}`,
+              name: stringToRichText(generatedNames[i] || `Personaje ${i + 1}`),
+              age: emptyRichText(), species: emptyRichText(), occupation: emptyRichText(), originLocationId: '',
+              psychology: { motivation: emptyRichText(), fear: emptyRichText(), virtues: emptyRichText(), flaws: emptyRichText(), archetype: emptyRichText() },
+              skills: emptyRichText(), limitations: emptyRichText(),
+              backstory: { origin: emptyRichText(), wound: emptyRichText(), journey: emptyRichText(), initialState: emptyRichText() },
+              characterParams: randomParams
+          });
+      }
+      setCharacterProfiles(newProfiles);
+      if (newProfiles.length > 0) {
+          setSelectedCharId(newProfiles[0].id);
+      } else {
+          setSelectedCharId(null);
+      }
+    } catch (error: any) {
+        console.error("Failed to generate simple characters", error);
+        const errorMessage = error.message || String(error);
+        if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+            setApiError(QUOTA_ERROR_MESSAGE);
+        } else {
+            setApiError('Failed to generate characters. Please try again.');
+        }
+    } finally {
+        setIsGeneratingSimpleCharacters(false);
     }
-    setCharacterProfiles(newProfiles);
-    if (newProfiles.length > 0) {
-        setSelectedCharId(newProfiles[0].id);
-    } else {
-        setSelectedCharId(null);
-    }
-  }, [comicLanguage]);
+  }, [comicLanguage, setApiError]);
 
   const handleRegenerateCharacterName = useCallback(async (characterId: string) => {
     setApiError(null);
@@ -1003,6 +1019,7 @@ function App() {
             minComicFontSize={minComicFontSize} 
             maxComicFontSize={maxComicFontSize} 
             comicLanguage={comicLanguage}
+            comicFontFamily={comicFontFamily}
             comicTheme={comicTheme}
             canvasResetToken={canvasResetToken} 
             onViewBoxChange={setViewBox}
@@ -1018,6 +1035,8 @@ function App() {
           onShowBoundingBoxesChange={setShowBoundingBoxes}
           uiScale={uiScale}
           onUiScaleChange={setUiScale}
+          comicFontFamily={comicFontFamily}
+          onComicFontFamilyChange={setComicFontFamily}
           comicTheme={comicTheme}
           onComicThemeChange={setComicTheme}
           onAppendComicTheme={handleAppendComicTheme}
@@ -1052,6 +1071,7 @@ function App() {
           onStoryChange={setStory}
           onGenerateNarrativeElement={handleGenerateNarrativeElement}
           onGenerateSimpleCharacters={handleGenerateSimpleCharacters}
+          isGeneratingSimpleCharacters={isGeneratingSimpleCharacters}
           onRegenerateCharacterName={handleRegenerateCharacterName}
           comicMode={comicMode}
           onComicModeChange={setComicMode}

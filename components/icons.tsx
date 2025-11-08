@@ -19,9 +19,9 @@ export const DiceIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 );
 
 export const WarningIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
-    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12 8.25a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0112 8.25zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
-  </svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+    </svg>
 );
 
 export const ImageIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -30,19 +30,16 @@ export const ImageIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
-export const CompulsivoLogo: React.FC<React.HTMLProps<HTMLDivElement>> = (props) => {
-  const { className, style, ...restProps } = props;
-
-  // This component renders a perfect circle.
-  // It uses `bg-current` so its color can be controlled by text color utilities (e.g., `text-condorito-wood`).
-  // The size is controlled by width utilities (e.g., `w-24`) and `aspect-square` ensures it's a circle.
-  const finalClassName = `${className || ''} rounded-full bg-current aspect-square`.trim().replace('h-auto', '');
-
-  return (
-    <div
-      {...restProps}
-      className={finalClassName}
-      style={style} // Pass style through just in case
+export const CompulsivoLogo: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <circle cx="50" cy="50" r="50" fill="#7E8A63" /> {/* condorito-green */}
+    <path
+      d="M 70,25 C 50,25 35,40 35,50 C 35,60 50,75 70,75"
+      stroke="white"
+      strokeWidth="12"
+      fill="none"
+      strokeLinecap="round"
     />
-  );
-};
+    <circle cx="48" cy="50" r="9" fill="white" />
+  </svg>
+);

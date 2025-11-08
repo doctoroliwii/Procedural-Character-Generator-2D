@@ -23,18 +23,31 @@ const createBubblePathWithTail = (
 ): string => {
     const { x, y, width, height } = bubbleRect;
     
-    // Failsafe: if the tail tip is inside the bubble, move it to the nearest edge
-    let tailTip = { ...initialTailTip };
-    if (tailTip.x > x && tailTip.x < x + width && tailTip.y > y && tailTip.y < y + height) {
-        tailTip = getClosestPointOnRect(tailTip, bubbleRect);
-    }
-    
     const r = 15; // Border radius
     const tailBaseWidth = 20;
-
+    const MAX_TAIL_LENGTH = 60; // Longitud máxima de la cola
+    
     // Calculate center of bubble
     const bubbleCenterX = x + width / 2;
     const bubbleCenterY = y + height / 2;
+    
+    // Calculate distance from bubble center to tail tip
+    const dx = initialTailTip.x - bubbleCenterX;
+    const dy = initialTailTip.y - bubbleCenterY;
+    const distanceToTip = Math.sqrt(dx * dx + dy * dy);
+    
+    // Shorten the tail if it's too long
+    let tailTip = { ...initialTailTip };
+    if (distanceToTip > MAX_TAIL_LENGTH) {
+        const ratio = MAX_TAIL_LENGTH / distanceToTip;
+        tailTip.x = bubbleCenterX + dx * ratio;
+        tailTip.y = bubbleCenterY + dy * ratio;
+    }
+    
+    // If tail tip is inside bubble, move to edge
+    if (tailTip.x > x && tailTip.x < x + width && tailTip.y > y && tailTip.y < y + height) {
+        tailTip = getClosestPointOnRect(tailTip, bubbleRect);
+    }
     
     // Calculate distances to each edge
     const distToTop = Math.abs(tailTip.y - y);
@@ -57,46 +70,66 @@ const createBubblePathWithTail = (
         edge = 'right';
     }
     
-    let tailP1: {x: number, y: number}, tailP2: {x: number, y: number};
+    // Calculate tail base points on the bubble edge
+    let tailP1: {x: number, y: number};
+    let tailP2: {x: number, y: number};
     
     switch(edge) {
         case 'top':
-            const tailBaseCenterXTop = Math.max(x + r, Math.min(x + width - r, tailTip.x));
-            tailP1 = { x: tailBaseCenterXTop + tailBaseWidth / 2, y: y };
-            tailP2 = { x: tailBaseCenterXTop - tailBaseWidth / 2, y: y };
+            const centerXTop = Math.max(x + r, Math.min(x + width - r, tailTip.x));
+            tailP1 = { x: centerXTop - tailBaseWidth / 2, y: y };
+            tailP2 = { x: centerXTop + tailBaseWidth / 2, y: y };
             break;
         case 'bottom':
-            const tailBaseCenterXBottom = Math.max(x + r, Math.min(x + width - r, tailTip.x));
-            tailP1 = { x: tailBaseCenterXBottom - tailBaseWidth / 2, y: y + height };
-            tailP2 = { x: tailBaseCenterXBottom + tailBaseWidth / 2, y: y + height };
+            const centerXBottom = Math.max(x + r, Math.min(x + width - r, tailTip.x));
+            tailP1 = { x: centerXBottom - tailBaseWidth / 2, y: y + height };
+            tailP2 = { x: centerXBottom + tailBaseWidth / 2, y: y + height };
             break;
         case 'left':
-            const tailBaseCenterYLeft = Math.max(y + r, Math.min(y + height - r, tailTip.y));
-            tailP1 = { x: x, y: tailBaseCenterYLeft - tailBaseWidth / 2 };
-            tailP2 = { x: x, y: tailBaseCenterYLeft + tailBaseWidth / 2 };
+            const centerYLeft = Math.max(y + r, Math.min(y + height - r, tailTip.y));
+            tailP1 = { x: x, y: centerYLeft - tailBaseWidth / 2 };
+            tailP2 = { x: x, y: centerYLeft + tailBaseWidth / 2 };
             break;
         case 'right':
         default:
-            const tailBaseCenterYRight = Math.max(y + r, Math.min(y + height - r, tailTip.y));
-            tailP1 = { x: x + width, y: tailBaseCenterYRight + tailBaseWidth / 2 };
-            tailP2 = { x: x + width, y: tailBaseCenterYRight - tailBaseWidth / 2 };
+            const centerYRight = Math.max(y + r, Math.min(y + height - r, tailTip.y));
+            tailP1 = { x: x + width, y: centerYRight - tailBaseWidth / 2 };
+            tailP2 = { x: x + width, y: centerYRight + tailBaseWidth / 2 };
             break;
     }
 
-    // Build the path with rounded corners
+    // Build the main bubble path
     let path = `M ${x + r},${y}`;
-    if (edge === 'top') path += ` L ${tailP2.x},${y} L ${tailTip.x},${tailTip.y} L ${tailP1.x},${y}`;
+    
+    // Top edge (insert tail if on top)
+    if (edge === 'top') {
+        path += ` L ${tailP1.x},${y} L ${tailTip.x},${tailTip.y} L ${tailP2.x},${y}`;
+    }
     path += ` L ${x + width - r},${y}`;
     path += ` A ${r},${r} 0 0 1 ${x + width},${y + r}`;
-    if (edge === 'right') path += ` L ${x + width},${tailP2.y} L ${tailTip.x},${tailTip.y} L ${x + width},${tailP1.y}`;
+    
+    // Right edge (insert tail if on right)
+    if (edge === 'right') {
+        path += ` L ${x + width},${tailP1.y} L ${tailTip.x},${tailTip.y} L ${x + width},${tailP2.y}`;
+    }
     path += ` L ${x + width},${y + height - r}`;
     path += ` A ${r},${r} 0 0 1 ${x + width - r},${y + height}`;
-    if (edge === 'bottom') path += ` L ${tailP2.x},${y + height} L ${tailTip.x},${tailTip.y} L ${tailP1.x},${y + height}`;
+    
+    // Bottom edge (insert tail if on bottom)
+    if (edge === 'bottom') {
+        path += ` L ${tailP2.x},${y + height} L ${tailTip.x},${tailTip.y} L ${tailP1.x},${y + height}`;
+    }
     path += ` L ${x + r},${y + height}`;
     path += ` A ${r},${r} 0 0 1 ${x},${y + height - r}`;
-    if (edge === 'left') path += ` L ${x},${tailP2.y} L ${tailTip.x},${tailTip.y} L ${x},${tailP1.y}`;
+    
+    // Left edge (insert tail if on left)
+    if (edge === 'left') {
+        path += ` L ${x},${tailP2.y} L ${tailTip.x},${tailTip.y} L ${x},${tailP1.y}`;
+    }
     path += ` L ${x},${y + r}`;
-    path += ` A ${r},${r} 0 0 1 ${x + r},${y} Z`;
+    path += ` A ${r},${r} 0 0 1 ${x + r},${y}`;
+    
+    path += ` Z`;
     
     return path;
 };
@@ -129,19 +162,29 @@ const getCharacterHeadBounds = (params: CharacterParams) => {
     return { x, y, width, height };
 };
 
-const estimateTextWidth = (text: string, fontSize: number): number => {
+const estimateTextWidth = (text: string, fontSize: number, fontFamily: string): number => {
     let width = 0;
     // This regex covers Hiragana, Katakana, CJK Unified Ideographs, and full-width forms
     const cjkRegex = /[\u3040-\u30ff\u4e00-\u9faf\uff00-\uffef]/g;
     const cjkChars = (text.match(cjkRegex) || []).length;
     const otherChars = text.length - cjkChars;
-    // Heuristics: CJK chars are roughly square (width ~ fontSize * 1.05), others are narrower (width ~ fontSize * 0.6).
-    width += cjkChars * fontSize * 1.05;
-    width += otherChars * fontSize * 0.6;
+
+    // Font-specific multipliers for better accuracy
+    const multipliers: {[key: string]: {cjk: number, other: number}} = {
+      'Comic Neue': {cjk: 1.05, other: 0.6},
+      'Bangers':    {cjk: 1.1, other: 0.8},
+      'Luckiest Guy': {cjk: 1.15, other: 0.85},
+      'Fredoka': {cjk: 1.0, other: 0.65},
+      'default': {cjk: 1.05, other: 0.6}
+    };
+    const mult = multipliers[fontFamily] || multipliers.default;
+
+    width += cjkChars * fontSize * mult.cjk;
+    width += otherChars * fontSize * mult.other;
     return width;
 };
 
-const wrapText = (text: string, fontSize: number, maxWidth: number): string[] => {
+const wrapText = (text: string, fontSize: number, maxWidth: number, fontFamily: string): string[] => {
     if (!text) return [];
     // CJK languages don't use spaces, so we need to be able to break after any character.
     const isCjk = /[\u3040-\u30ff\u4e00-\u9faf\uff00-\uffef]/.test(text);
@@ -153,7 +196,7 @@ const wrapText = (text: string, fontSize: number, maxWidth: number): string[] =>
         const word = words[i];
         const separator = isCjk ? '' : ' ';
         const prospectiveLine = currentLine + separator + word;
-        if (estimateTextWidth(prospectiveLine, fontSize) > maxWidth) {
+        if (estimateTextWidth(prospectiveLine, fontSize, fontFamily) > maxWidth) {
             lines.push(currentLine);
             currentLine = word;
         } else {
@@ -253,10 +296,11 @@ interface ComicPanelProps {
   maxComicFontSize: number;
   instanceKey: string;
   comicLanguage: string;
+  comicFontFamily: string;
   layer: 'content' | 'dialogue';
 }
 
-const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFontSize, maxComicFontSize, instanceKey, comicLanguage, layer }) => {
+const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFontSize, maxComicFontSize, instanceKey, comicLanguage, comicFontFamily, layer }) => {
   const { x: pX, y: pY, width: pW, height: pH } = panelLayout;
 
   const panelTransform = useMemo(() => {
@@ -299,9 +343,9 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
       const sizeAfterPenalty = clampedLengthSize * Math.pow(DIALOGUE_COUNT_FACTOR, Math.max(0, numDialogues - 1));
       const dynamicFontSize = Math.max(minComicFontSize, Math.min(maxComicFontSize, sizeAfterPenalty));
       
-      const textLines = wrapText(dialogue.text.toUpperCase(), dynamicFontSize, maxBubbleWidth - 20);
+      const textLines = wrapText(dialogue.text.toUpperCase(), dynamicFontSize, maxBubbleWidth - 20, comicFontFamily);
       const textHeight = textLines.length * dynamicFontSize * 1.2;
-      const width = Math.min(maxBubbleWidth, Math.max(80, textLines.reduce((max, line) => Math.max(max, estimateTextWidth(line, dynamicFontSize)), 0) + 20));
+      const width = Math.min(maxBubbleWidth, Math.max(80, textLines.reduce((max, line) => Math.max(max, estimateTextWidth(line, dynamicFontSize, comicFontFamily)), 0) + 20));
       const height = textHeight + 20;
       
       const speakerIndexInPanel = panel.characterIdsInPanel.indexOf(dialogue.characterId);
@@ -415,7 +459,7 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
       };
     });
 
-  }, [panel, panelTransform, minComicFontSize, maxComicFontSize, pX, pY, pW, pH, instanceKey, layer, comicLanguage]);
+  }, [panel, panelTransform, minComicFontSize, maxComicFontSize, pX, pY, pW, pH, instanceKey, layer, comicLanguage, comicFontFamily]);
 
 
   if (layer === 'dialogue') {
@@ -424,7 +468,7 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
           {dialogueData.map((data: any) => (
               <g key={data.key}>
                   <path d={data.bubblePath} fill="white" stroke="black" strokeWidth="2" strokeLinejoin='round' />
-                  <text x={data.bubbleX} y={data.bubbleY - data.textHeight/2 + data.dynamicFontSize} textAnchor="middle" fontSize={data.dynamicFontSize} fontFamily="sans-serif" fill="black" fontWeight="bold" style={{ userSelect: 'none' }}>
+                  <text x={data.bubbleX} y={data.bubbleY - data.textHeight/2 + data.dynamicFontSize} textAnchor="middle" fontSize={data.dynamicFontSize} fontFamily={comicFontFamily} fill="black" fontWeight="bold" style={{ userSelect: 'none' }}>
                       {data.textLines.map((line: string, lineIndex: number) => (
                           <tspan key={lineIndex} x={data.bubbleX} dy={lineIndex === 0 ? 0 : data.dynamicFontSize * 1.2}>{line}</tspan>
                       ))}

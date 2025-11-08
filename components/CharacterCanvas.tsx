@@ -12,13 +12,14 @@ interface CharacterCanvasProps {
   minComicFontSize: number;
   maxComicFontSize: number;
   comicLanguage: string;
+  comicFontFamily: string;
   comicTheme: string;
   canvasResetToken: number;
   onViewBoxChange: (viewBox: { x: number; y: number; width: number; height: number; }) => void;
 }
 
 
-const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicTheme, canvasResetToken, onViewBoxChange }, ref) => {
+const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, onViewBoxChange }, ref) => {
   const VIEWBOX_WIDTH_BASE = 400;
   const VIEWBOX_HEIGHT = 700;
   
@@ -323,6 +324,7 @@ const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProp
                     minComicFontSize={minComicFontSize}
                     maxComicFontSize={maxComicFontSize}
                     comicLanguage={comicLanguage}
+                    comicFontFamily={comicFontFamily}
                     layer="content"
                   />
               ))}
@@ -339,6 +341,7 @@ const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProp
                     minComicFontSize={minComicFontSize}
                     maxComicFontSize={maxComicFontSize}
                     comicLanguage={comicLanguage}
+                    comicFontFamily={comicFontFamily}
                     layer="dialogue"
                   />
               ))}
