@@ -84,7 +84,7 @@ export interface ComicScript {
   panels: PanelScript[];
 }
 
-export const generateComicScript = async (theme: string, numPanels: number, language: string, numCharacters?: number): Promise<ComicScript> => {
+export const generateComicScript = async (theme: string, numPanels: number, language: string, numCharacters?: number, scene?: string): Promise<ComicScript> => {
   const languageMap: Record<string, string> = {
     es: 'español',
     en: 'inglés',
@@ -99,8 +99,11 @@ export const generateComicScript = async (theme: string, numPanels: number, lang
     ? `El guion debe tener exactamente ${numCharacters} personajes únicos.`
     : 'Primero, decide cuántos personajes únicos hay en toda la historia (totalUniqueCharacters).';
 
+  const sceneInstruction = scene ? `Toda la historia debe transcurrir en la siguiente escena: "${scene}". Mantén la coherencia visual del fondo en todas las viñetas.` : '';
+
   const prompt = `Crea un guion de cómic corto de ${numPanels} viñetas en ${languageName} basado en el tema: "${theme}".
   ${characterConstraint}
+  ${sceneInstruction}
   El guion debe ser coherente, con personajes consistentes a lo largo de las viñetas.
   Para cada viñeta:
   1.  Describe la escena, la apariencia de los personajes, sus poses y sus acciones.
@@ -201,6 +204,33 @@ export const generateCharacterName = async (genre: string, language: string): Pr
 
 
 // --- NEW NARRATIVE GENERATION SERVICES ---
+
+export const generateSceneDescription = async (theme: string, language: string): Promise<string> => {
+  const languageMap: Record<string, string> = {
+    es: 'español',
+    en: 'inglés',
+    ja: 'japonés',
+    zh: 'chino',
+    ru: 'ruso',
+    hi: 'hindi',
+  };
+  const languageName = languageMap[language] || 'español';
+  const prompt = `Describe una escena o lugar visualmente interesante en ${languageName} para una tira cómica con el tema: "${theme}".
+  La descripción debe ser concisa (1-2 frases) y evocadora.
+  Ejemplo: "Una concurrida calle de la ciudad por la noche, con letreros de neón reflejándose en los charcos."
+  Responde solo con la descripción de la escena, sin texto adicional.`;
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+    return response.text.trim().replace(/^"|"$/g, '');
+  } catch (error) {
+    console.error("Error generating scene description:", error);
+    throw error;
+  }
+};
+
 
 const loreSchema = {
   type: Type.OBJECT,
@@ -358,13 +388,15 @@ export const generateStory = async (lore: Lore, characters: CharacterProfile[], 
     return parseJsonResponse(response.text);
 };
 
-export const generateComicScriptFromStory = async (story: Story, lore: Lore, characters: CharacterProfile[], numPanels: number, language: string): Promise<ComicScript> => {
+export const generateComicScriptFromStory = async (story: Story, lore: Lore, characters: CharacterProfile[], numPanels: number, language: string, scene?: string): Promise<ComicScript> => {
     const characterMap = new Map(characters.map(c => [c.id, c]));
     const charactersInStory = story.characterProfileIds.map(id => characterMap.get(id)).filter(Boolean) as CharacterProfile[];
     const characterSummaries = charactersInStory.map((c, index) => `ID ${index}: ${richTextToString(c.name)}. PSICOLOGÍA: ${richTextToString(c.psychology.virtues)}, ${richTextToString(c.psychology.flaws)}.`).join('\n');
+    const sceneInstruction = scene ? `Toda la historia debe transcurrir en la siguiente escena: "${scene}". Mantén la coherencia visual del fondo en todas las viñetas.` : '';
 
     const prompt = `Eres un guionista de cómics experto.
     UNIVERSO: ${richTextToString(lore.genre)}. ${richTextToString(lore.rules)}
+    ${sceneInstruction}
     PERSONAJES:
     ${characterSummaries}
     
@@ -372,9 +404,16 @@ export const generateComicScriptFromStory = async (story: Story, lore: Lore, cha
     ${story.storyCircle.map(s => `${s.step}. ${s.title}: ${s.description}`).join('\n')}
     
     TAREA: Adapta esta historia a un guion de cómic de ${numPanels} viñetas en ${language}.
+    El guion debe ser coherente, con personajes consistentes a lo largo de las viñetas.
+    El campo 'totalUniqueCharacters' debe ser ${charactersInStory.length}.
     Distribuye los 8 pasos de la historia de forma lógica a lo largo de las viñetas.
-    Para cada viñeta, describe la escena, acción, tipo de plano, personajes presentes (usando sus IDs numéricos), y diálogos que reflejen su personalidad.
-    La salida debe ser un objeto JSON.`;
+    Para cada viñeta:
+    1.  Describe la escena, la apariencia de los personajes, sus poses y sus acciones.
+    2.  Determina el tipo de plano (shotType) para la viñeta para enfocar la acción. Las opciones son: 'close-up' (enfoca en la cara y hombros, para diálogos o emociones), 'medium-shot' (muestra de la cintura para arriba, bueno para interacciones), o 'full-shot' (muestra el cuerpo completo, para establecer la escena o mostrar acción).
+    3.  Especifica qué personajes únicos están en la viñeta usando sus IDs (basados en 0) en el array 'charactersInPanel'.
+    4.  Escribe los diálogos. Para cada diálogo, usa el 'characterId' del personaje único que habla. Asegúrate de que este ID corresponda a un personaje presente en 'charactersInPanel'.
+    5.  El texto del diálogo debe ser corto y conciso para que quepa en un bocadillo.
+    La salida debe ser un objeto JSON que se ajuste al esquema proporcionado.`;
 
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -569,6 +608,39 @@ export const generatePanelBackground = async (description: string): Promise<stri
     } catch (error) {
         console.error("Error generating panel background:", error);
         // Return a transparent pixel as a fallback to not break the comic layout
+        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    }
+};
+
+export const generateVariantPanelBackground = async (baseImageB64: string, description: string): Promise<string> => {
+    const prompt = `Using the provided image as a reference for the location and art style, generate a new background that matches this scene description: "${description}".
+
+The new image must maintain the same simple, modern cartoon aesthetic with bold black outlines.
+CRUCIAL: DO NOT draw any characters, people, creatures, or figures. Only generate the environment.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/png', data: baseImageB64 } },
+                    { text: prompt }
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return part.inlineData.data; // This is the base64 string
+            }
+        }
+        throw new Error("No image data found in API response for variant background.");
+    } catch (error) {
+        console.error("Error generating variant panel background:", error);
+        // Fallback to a transparent pixel
         return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
     }
 };

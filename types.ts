@@ -59,6 +59,7 @@ export interface CharacterParams {
   backHairWidthRatio: number;
   backHairHeightRatio: number;
   fringeHeightRatio: number;
+  viewAngle: number;
   bodyColor: string;
   irisColor: string;
   outlineColor: string;
@@ -182,4 +183,14 @@ export interface Story {
   stakes: RichText;
   characterProfileIds: string[];
   storyCircle: StoryCircleStep[];
+}
+
+export interface Project {
+  name: RichText;
+  genre: RichText;
+  seasons: number;
+  episodes: number;
+  lore: Lore | null;
+  characterProfiles: CharacterProfile[];
+  comicPages: ComicPanelData[][];
 }

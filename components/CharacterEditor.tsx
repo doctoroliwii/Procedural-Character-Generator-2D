@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { CharacterProfile, CharacterParams, CharacterParamKey, ColorParamKey, RichText, Segment } from '../types';
+import type { CharacterProfile, CharacterParams, CharacterParamKey, ColorParamKey, RichText, Segment, BackgroundOptions, CharacterInstance } from '../types';
 import { DiceIcon } from './icons';
 import { generateNarrativeField, generateFullCharacterProfile } from '../services/geminiService';
 import { PARAM_CONFIGS } from '../constants';
 import Slider from './Slider';
 import { generateRandomAppearanceParams, getRandomParamValue } from '../services/characterGenerationService';
+import CharacterCanvas from './CharacterCanvas';
 
 interface CharacterEditorProps {
   lore: any;
@@ -96,6 +97,7 @@ interface NarrativePreset {
 
 type MainTab = 'narrative' | 'appearance';
 type NarrativeSubTab = 'profile' | 'psychology' | 'backstory' | 'skills';
+type AppearanceMacroTab = 'cuerpo' | 'vestuario' | 'vistas';
 type AppearanceSubTab = 'head' | 'hair' | 'eyes' | 'body' | 'arms' | 'legs' | 'color';
 
 const MainTabButton = ({ tabName, label, activeTab, setActiveTab }: { tabName: MainTab, label: string, activeTab: MainTab, setActiveTab: (tab: MainTab) => void}) => (
@@ -168,9 +170,18 @@ const CheckboxControl = ({ label, checked, onChange, onRandomize }: { label: str
     </div>
 );
 
+const ZoomControls = ({ onZoomIn, onZoomOut, zoomPercentage }: { onZoomIn: () => void, onZoomOut: () => void, zoomPercentage: number }) => (
+    <div className="absolute bottom-4 right-4 bg-panel-back/90 backdrop-blur-sm border border-panel-border rounded-lg shadow-2xl pointer-events-auto p-2 flex items-center gap-2 z-50">
+      <button onClick={onZoomOut} className="w-8 h-8 flex items-center justify-center font-bold text-xl bg-panel-header text-condorito-brown rounded-md hover:bg-panel-border transition">-</button>
+      <div className="text-xs font-mono w-12 text-center">{zoomPercentage.toFixed(0)}%</div>
+      <button onClick={onZoomIn} className="w-8 h-8 flex items-center justify-center font-bold text-xl bg-panel-header text-condorito-brown rounded-md hover:bg-panel-border transition">+</button>
+    </div>
+);
+
 
 const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, onGenerateNarrativeElement, setApiError, activeMainTab, onActiveMainTabChange }) => {
     const [activeNarrativeSubTab, setActiveNarrativeSubTab] = useState<NarrativeSubTab>('profile');
+    const [activeMacroAppearanceTab, setActiveMacroAppearanceTab] = useState<AppearanceMacroTab>('cuerpo');
     const [activeAppearanceSubTab, setActiveAppearanceSubTab] = useState<AppearanceSubTab>('head');
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -190,8 +201,46 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
     const [isNamingNarrativePreset, setIsNamingNarrativePreset] = useState(false);
     const [narrativePresetNameInput, setNarrativePresetNameInput] = useState('');
 
+    const [viewBox, setViewBox] = useState(() => {
+      const initialZoom = 0.33;
+      const baseWidth = 400;
+      const baseHeight = 700;
+      const newWidth = baseWidth / initialZoom;
+      const newHeight = baseHeight / initialZoom;
+      return {
+          x: (baseWidth - newWidth) / 2 + (baseWidth * (1/3)), // Center on right two-thirds
+          y: (baseHeight - newHeight) / 2,
+          width: newWidth,
+          height: newHeight,
+      };
+    });
+    const [backgroundOptions] = useState<BackgroundOptions>({ color1: '#FEFDFB', color2: '#FDEFE2', animation: false });
+
+    const handleZoom = useCallback((factor: number) => {
+        setViewBox(prev => {
+            const newWidth = prev.width / factor;
+            const newHeight = prev.height / factor;
+            const centerX = prev.x + prev.width / 2;
+            const centerY = prev.y + prev.height / 2;
+            const newX = centerX - newWidth / 2;
+            const newY = centerY - newHeight / 2;
+            return { x: newX, y: newY, width: newWidth, height: newHeight };
+        });
+    }, []);
+
     const selectedChar = useMemo(() => characterProfiles.find(c => c.id === selectedCharId), [characterProfiles, selectedCharId]);
     
+    const characterToRender = useMemo((): CharacterInstance[] => {
+        if (!selectedChar || !selectedChar.characterParams) return [];
+        return [{
+          params: selectedChar.characterParams,
+          x: 0,
+          y: 0,
+          scale: 1,
+          zIndex: 1
+        }];
+    }, [selectedChar]);
+
     useEffect(() => {
         if (characterProfiles.length > 0) {
             const currentSelectionExists = characterProfiles.some(c => c.id === selectedCharId);
@@ -416,8 +465,8 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
 
 
     return (
-        <div className="flex flex-col h-full bg-white space-y-2">
-            <div className="flex gap-2 p-1">
+        <div className="flex flex-col h-full bg-white">
+            <div className="flex-shrink-0 flex gap-2 p-3 border-b border-panel-header">
                <select value={selectedCharId || ''} onChange={e => onSelectedCharIdChange(e.target.value) } className="flex-grow p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red">
                    {characterProfiles.length === 0 && <option value="" disabled>-- Cree un personaje --</option>}
                    {characterProfiles.map(c => <option key={c.id} value={c.id}>{richTextToString(c.name) || 'Personaje sin nombre'}</option>)}
@@ -427,12 +476,12 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
             </div>
             {selectedChar ? (
                 <>
-                <div className="flex border-b border-panel-header bg-panel-header/80">
+                <div className="flex-shrink-0 flex border-b border-panel-header bg-panel-header/80">
                     <MainTabButton tabName="narrative" label="Narrativa" activeTab={activeMainTab} setActiveTab={onActiveMainTabChange} />
                     <MainTabButton tabName="appearance" label="Apariencia" activeTab={activeMainTab} setActiveTab={onActiveMainTabChange} />
                 </div>
                 
-                {activeMainTab === 'narrative' && <div className="space-y-3 p-1">
+                {activeMainTab === 'narrative' && <div className="space-y-3 p-3 flex-grow overflow-y-auto">
                     <div className="flex gap-2 p-1 bg-panel-header rounded-lg">
                        <SubTabButton label="Perfil" active={activeNarrativeSubTab === 'profile'} onClick={() => setActiveNarrativeSubTab('profile')} />
                        <SubTabButton label="Psicología" active={activeNarrativeSubTab === 'psychology'} onClick={() => setActiveNarrativeSubTab('psychology')} />
@@ -459,7 +508,7 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
                     {isNamingNarrativePreset && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Guardar nueva narrativa</h4> <input type="text" value={narrativePresetNameInput} onChange={e => setNarrativePresetNameInput(e.target.value)} placeholder="Nombre del preset..." className="w-full p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red" autoFocus /> <div className="flex gap-2"> <button onClick={handleConfirmSaveNarrativePreset} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-condorito-green text-white rounded-md hover:brightness-95">Confirmar</button> <button onClick={() => setIsNamingNarrativePreset(false)} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancelar</button> </div> </div> )}
                     {showNarrativePresets && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Narrativas Guardadas</h4> {narrativePresets.length === 0 ? ( <p className="text-xs text-center text-condorito-brown py-2">No hay narrativas guardadas.</p> ) : ( <div className="max-h-32 overflow-y-auto space-y-1 pr-1"> {narrativePresets.map(preset => ( <div key={preset.name} className="flex items-center justify-between p-1.5 rounded-lg bg-panel-header group"> <button onClick={() => handleLoadNarrativePreset(preset.narrative)} className="text-left text-xs text-condorito-brown flex-grow hover:text-condorito-red">{preset.name}</button> <button onClick={() => handleDeleteNarrativePreset(preset.name)} className="text-condorito-red opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-condorito-red/20" title={`Eliminar ${preset.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg> </button> </div> ))} </div> )} </div> )}
 
-                    <div className="space-y-3 p-3 bg-panel-back rounded-b-lg flex-grow overflow-y-auto">
+                    <div className="space-y-3 p-3 bg-panel-back rounded-b-lg flex-grow">
                         {activeNarrativeSubTab === 'profile' && <>
                             <RichTextEditor isSingleLine label="Nombre" value={selectedChar.name} onChange={v => updateCurrentChar(c => ({...c, name: v}))} onBlur={()=>{}} onGenerate={() => handleGenerateField('character.name')} isGenerating={isFieldLoading.has('character.name')} />
                             <RichTextEditor isSingleLine label="Edad" value={selectedChar.age} onChange={v => updateCurrentChar(c => ({...c, age: v}))} onBlur={()=>{}} onGenerate={() => handleGenerateField('character.age')} isGenerating={isFieldLoading.has('character.age')} />
@@ -486,50 +535,102 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
                     </div>
                 </div>}
 
-                {activeMainTab === 'appearance' && currentParams && <div className="space-y-3 p-1">
-                    <div className="grid grid-cols-4 gap-1 p-1 bg-panel-header rounded-lg">
-                        <SubTabButton label="Cabeza" active={activeAppearanceSubTab === 'head'} onClick={() => setActiveAppearanceSubTab('head')} />
-                        <SubTabButton label="Pelo" active={activeAppearanceSubTab === 'hair'} onClick={() => setActiveAppearanceSubTab('hair')} />
-                        <SubTabButton label="Ojos" active={activeAppearanceSubTab === 'eyes'} onClick={() => setActiveAppearanceSubTab('eyes')} />
-                        <SubTabButton label="Cuerpo" active={activeAppearanceSubTab === 'body'} onClick={() => setActiveAppearanceSubTab('body')} />
-                        <SubTabButton label="Brazos" active={activeAppearanceSubTab === 'arms'} onClick={() => setActiveAppearanceSubTab('arms')} />
-                        <SubTabButton label="Piernas" active={activeAppearanceSubTab === 'legs'} onClick={() => setActiveAppearanceSubTab('legs')} />
-                        <SubTabButton label="Color" active={activeAppearanceSubTab === 'color'} onClick={() => setActiveAppearanceSubTab('color')} />
-                    </div>
-                    <button onClick={handleRandomizeAppearance} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold bg-condorito-red text-white rounded-md hover:brightness-95 disabled:bg-panel-border transition">
-                        <DiceIcon className="w-4 h-4" />
-                        Randomize Apariencia
-                    </button>
-                    <div className="grid grid-cols-2 gap-2">
-                        <button onClick={handleInitiateSaveAppearancePreset} className="w-full px-3 py-2 text-xs font-semibold bg-condorito-wood text-white rounded-md hover:brightness-95 transition-colors"> Guardar Apariencia </button>
-                        <button onClick={() => { setShowAppearancePresets(s => !s); setIsNamingAppearancePreset(false); }} className="w-full px-3 py-2 text-xs font-semibold bg-condorito-gray text-white rounded-md hover:brightness-95 transition-colors"> {showAppearancePresets ? 'Ocultar' : 'Cargar Apariencia'} </button>
-                    </div>
+                {activeMainTab === 'appearance' && currentParams && (
+                    <div className="flex-grow flex overflow-hidden">
+                        <div className="w-1/3 h-full overflow-y-auto border-r border-panel-header p-3 space-y-3">
+                            <div className="flex-shrink-0 flex gap-2 p-1 bg-panel-header rounded-lg">
+                               <SubTabButton label="Cuerpo" active={activeMacroAppearanceTab === 'cuerpo'} onClick={() => setActiveMacroAppearanceTab('cuerpo')} />
+                               <SubTabButton label="Vestuario" active={activeMacroAppearanceTab === 'vestuario'} onClick={() => setActiveMacroAppearanceTab('vestuario')} />
+                               <SubTabButton label="Vistas" active={activeMacroAppearanceTab === 'vistas'} onClick={() => setActiveMacroAppearanceTab('vistas')} />
+                            </div>
 
-                    {isNamingAppearancePreset && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Guardar nueva apariencia</h4> <input type="text" value={appearancePresetNameInput} onChange={e => setAppearancePresetNameInput(e.target.value)} placeholder="Nombre del preset..." className="w-full p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red" autoFocus /> <div className="flex gap-2"> <button onClick={handleConfirmSaveAppearancePreset} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-condorito-green text-white rounded-md hover:brightness-95">Confirmar</button> <button onClick={() => setIsNamingAppearancePreset(false)} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancelar</button> </div> </div> )}
-                    {showAppearancePresets && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Apariencias Guardadas</h4> {appearancePresets.length === 0 ? ( <p className="text-xs text-center text-condorito-brown py-2">No hay apariencias guardadas.</p> ) : ( <div className="max-h-32 overflow-y-auto space-y-1 pr-1"> {appearancePresets.map(preset => ( <div key={preset.name} className="flex items-center justify-between p-1.5 rounded-lg bg-panel-header group"> <button onClick={() => handleLoadAppearancePreset(preset.params)} className="text-left text-xs text-condorito-brown flex-grow hover:text-condorito-red">{preset.name}</button> <button onClick={() => handleDeleteAppearancePreset(preset.name)} className="text-condorito-red opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-condorito-red/20" title={`Eliminar ${preset.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg> </button> </div> ))} </div> )} </div> )}
+                            <div className="flex-grow">
+                              {activeMacroAppearanceTab === 'cuerpo' && (
+                                  <div className="space-y-3 pt-2">
+                                    <div className="grid grid-cols-4 gap-1 p-1 bg-panel-header rounded-lg">
+                                        <SubTabButton label="Cabeza" active={activeAppearanceSubTab === 'head'} onClick={() => setActiveAppearanceSubTab('head')} />
+                                        <SubTabButton label="Pelo" active={activeAppearanceSubTab === 'hair'} onClick={() => setActiveAppearanceSubTab('hair')} />
+                                        <SubTabButton label="Ojos" active={activeAppearanceSubTab === 'eyes'} onClick={() => setActiveAppearanceSubTab('eyes')} />
+                                        <SubTabButton label="Cuerpo" active={activeAppearanceSubTab === 'body'} onClick={() => setActiveAppearanceSubTab('body')} />
+                                        <SubTabButton label="Brazos" active={activeAppearanceSubTab === 'arms'} onClick={() => setActiveAppearanceSubTab('arms')} />
+                                        <SubTabButton label="Piernas" active={activeAppearanceSubTab === 'legs'} onClick={() => setActiveAppearanceSubTab('legs')} />
+                                        <SubTabButton label="Color" active={activeAppearanceSubTab === 'color'} onClick={() => setActiveAppearanceSubTab('color')} />
+                                    </div>
+                                    <button onClick={handleRandomizeAppearance} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold bg-condorito-red text-white rounded-md hover:brightness-95 disabled:bg-panel-border transition">
+                                        <DiceIcon className="w-4 h-4" />
+                                        Randomize Apariencia
+                                    </button>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button onClick={handleInitiateSaveAppearancePreset} className="w-full px-3 py-2 text-xs font-semibold bg-condorito-wood text-white rounded-md hover:brightness-95 transition-colors"> Guardar Apariencia </button>
+                                        <button onClick={() => { setShowAppearancePresets(s => !s); setIsNamingAppearancePreset(false); }} className="w-full px-3 py-2 text-xs font-semibold bg-condorito-gray text-white rounded-md hover:brightness-95 transition-colors"> {showAppearancePresets ? 'Ocultar' : 'Cargar Apariencia'} </button>
+                                    </div>
 
-                    <div className="space-y-3 p-3 bg-panel-back rounded-b-lg flex-grow overflow-y-auto">
-                      {activeAppearanceSubTab === 'head' && <div className="space-y-4"> {(['headWidth', 'headHeight', 'mouthWidthRatio', 'mouthYOffsetRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <Slider {...PARAM_CONFIGS.mouthBend} min={-Math.round(maxMouthBend)} max={Math.round(maxMouthBend)} value={currentParams.mouthBend} onChange={(e) => handleParamChange('mouthBend', Number(e.target.value))} onRandomize={() => handleRandomizeParam('mouthBend')} /> <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Head Shape" value={currentParams.headShape} options={['ellipse', 'circle', 'square', 'triangle', 'inverted-triangle']} onChange={(v) => handleParamChange('headShape', v)} onRandomize={() => handleRandomizeParam('headShape')} /> {(currentParams.headShape === 'square') && ( <Slider {...PARAM_CONFIGS.headCornerRadius} value={currentParams.headCornerRadius} onChange={(e) => handleParamChange('headCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('headCornerRadius')} /> )} {(currentParams.headShape === 'triangle' || currentParams.headShape === 'inverted-triangle') && ( <Slider {...PARAM_CONFIGS.triangleCornerRadius} value={currentParams.triangleCornerRadius} onChange={(e) => handleParamChange('triangleCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('triangleCornerRadius')} /> )} </div> </div>}
-                      {activeAppearanceSubTab === 'hair' && <div className="space-y-4"> <CheckboxControl label="Enable Hair" checked={currentParams.hair} onChange={e => handleParamChange('hair', e.target.checked)} onRandomize={() => handleRandomizeParam('hair')} /> {currentParams.hair && ( <div className="pt-4 border-t border-panel-header space-y-4"> {(['backHairWidthRatio', 'backHairHeightRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <Slider {...PARAM_CONFIGS.fringeHeightRatio} max={Math.floor(maxFringeHeightRatio)} value={currentParams.fringeHeightRatio} onChange={(e) => handleParamChange('fringeHeightRatio', Number(e.target.value))} onRandomize={() => handleRandomizeParam('fringeHeightRatio')} /> </div> )} </div>}
-                      {activeAppearanceSubTab === 'eyes' && <div className="space-y-4"> {(['eyeSizeRatio', 'eyeSpacingRatio', 'pupilSizeRatio', 'upperEyelidCoverage', 'lowerEyelidCoverage', 'eyebrowWidthRatio', 'eyebrowHeightRatio', 'eyebrowYOffsetRatio', 'eyebrowAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <div className="pt-4 border-t border-panel-header space-y-3"> <CheckboxControl label="Eyelashes" checked={currentParams.eyelashes} onChange={e => handleParamChange('eyelashes', e.target.checked)} onRandomize={() => handleRandomizeParam('eyelashes')} /> {currentParams.eyelashes && ( <div className="pl-2 border-l-2 border-condorito-red/30 space-y-4"> {(['eyelashCount', 'eyelashLength', 'eyelashAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> )} </div> </div>}
-                      {activeAppearanceSubTab === 'body' && <div className="space-y-4"> {(['neckHeight', 'neckWidthRatio', 'torsoHeight', 'torsoWidth', 'pelvisHeight', 'pelvisWidthRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Torso Shape" value={currentParams.torsoShape} options={['rectangle', 'circle', 'square', 'triangle', 'inverted-triangle']} onChange={(v) => handleParamChange('torsoShape', v)} onRandomize={() => handleRandomizeParam('torsoShape')} /> {(currentParams.torsoShape === 'square' || currentParams.torsoShape === 'rectangle') && ( <Slider {...PARAM_CONFIGS.torsoCornerRadius} value={currentParams.torsoCornerRadius} onChange={(e) => handleParamChange('torsoCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('torsoCornerRadius')} /> )} {(currentParams.torsoShape === 'triangle' || currentParams.torsoShape === 'inverted-triangle') && ( <Slider {...PARAM_CONFIGS.triangleCornerRadius} value={currentParams.triangleCornerRadius} onChange={(e) => handleParamChange('triangleCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('triangleCornerRadius')} /> )} </div> <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Pelvis Shape" value={currentParams.pelvisShape} options={['rectangle', 'horizontal-oval']} onChange={(v) => handleParamChange('pelvisShape', v)} onRandomize={() => handleRandomizeParam('pelvisShape')} /> </div> </div>}
-                      {activeAppearanceSubTab === 'arms' && <div className="space-y-4"> <Slider {...PARAM_CONFIGS['armLength']} value={currentParams['armLength']} onChange={(e) => handleParamChange('armLength', Number(e.target.value))} onRandomize={() => handleRandomizeParam('armLength')} /> <div className="pt-4 border-t border-panel-header space-y-3"> <div className="flex items-center justify-between p-2 rounded-lg bg-panel-header"> <label htmlFor="limbSymmetry" className="font-medium text-condorito-brown select-none text-xs">Symmetry</label> <input type="checkbox" id="limbSymmetry" checked={limbSymmetry} onChange={e => setLimbSymmetry(e.target.checked)} className="h-5 w-5 rounded-md border-panel-header text-condorito-red focus:ring-condorito-red cursor-pointer" /> </div> </div> <div className="pt-4 border-t border-panel-header space-y-4"> {(['lArmWidth', 'rArmWidth', 'lHandSize', 'rHandSize', 'lArmAngle', 'lArmBend', 'rArmAngle', 'rArmBend'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k] as number} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> </div>}
-                      {activeAppearanceSubTab === 'legs' && <div className="space-y-4"> <Slider {...PARAM_CONFIGS['legLength']} value={currentParams['legLength']} onChange={(e) => handleParamChange('legLength', Number(e.target.value))} onRandomize={() => handleRandomizeParam('legLength')} /> <div className="pt-4 border-t border-panel-header space-y-4"> {(['lLegWidth', 'rLegWidth', 'lFootSize', 'rFootSize', 'lLegAngle', 'lLegBend', 'rLegAngle', 'rLegBend'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k] as number} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> </div>}
-                      {activeAppearanceSubTab === 'color' && <div className="space-y-3">
-                        <CheckboxControl label="Body Outlines" checked={currentParams.bodyOutlines} onChange={e => handleParamChange('bodyOutlines', e.target.checked)} onRandomize={() => handleRandomizeParam('bodyOutlines')} />
-                        <CheckboxControl label="Eye Outlines" checked={currentParams.eyeOutlines} onChange={e => handleParamChange('eyeOutlines', e.target.checked)} onRandomize={() => handleRandomizeParam('eyeOutlines')} />
-                        <div className="pt-2 border-t border-panel-header" />
-                        <ColorInput label="Body" value={currentParams.bodyColor} onChange={e => handleParamChange('bodyColor', e.target.value)} onRandomize={() => handleRandomizeParam('bodyColor')} />
-                        <ColorInput label="Hair" value={currentParams.hairColor} onChange={e => handleParamChange('hairColor', e.target.value)} onRandomize={() => handleRandomizeParam('hairColor')} />
-                        <ColorInput label="Outline" value={currentParams.outlineColor} onChange={e => handleParamChange('outlineColor', e.target.value)} onRandomize={() => handleRandomizeParam('outlineColor')} />
-                        <ColorInput label="Pupil" value={currentParams.pupilColor} onChange={e => handleParamChange('pupilColor', e.target.value)} onRandomize={() => handleRandomizeParam('pupilColor')} />
-                        <ColorInput label="Iris" value={currentParams.irisColor} onChange={e => handleParamChange('irisColor', e.target.value)} onRandomize={() => handleRandomizeParam('irisColor')} />
-                      </div>}
+                                    {isNamingAppearancePreset && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Guardar nueva apariencia</h4> <input type="text" value={appearancePresetNameInput} onChange={e => setAppearancePresetNameInput(e.target.value)} placeholder="Nombre del preset..." className="w-full p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red" autoFocus /> <div className="flex gap-2"> <button onClick={handleConfirmSaveAppearancePreset} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-condorito-green text-white rounded-md hover:brightness-95">Confirmar</button> <button onClick={() => setIsNamingAppearancePreset(false)} className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancelar</button> </div> </div> )}
+                                    {showAppearancePresets && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Apariencias Guardadas</h4> {appearancePresets.length === 0 ? ( <p className="text-xs text-center text-condorito-brown py-2">No hay apariencias guardadas.</p> ) : ( <div className="max-h-32 overflow-y-auto space-y-1 pr-1"> {appearancePresets.map(preset => ( <div key={preset.name} className="flex items-center justify-between p-1.5 rounded-lg bg-panel-header group"> <button onClick={() => handleLoadAppearancePreset(preset.params)} className="text-left text-xs text-condorito-brown flex-grow hover:text-condorito-red">{preset.name}</button> <button onClick={() => handleDeleteAppearancePreset(preset.name)} className="text-condorito-red opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-condorito-red/20" title={`Eliminar ${preset.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg> </button> </div> ))} </div> )} </div> )}
+                                    <div className="space-y-3 p-3 bg-panel-back rounded-b-lg">
+                                      {activeAppearanceSubTab === 'head' && <div className="space-y-4"> {(['headWidth', 'headHeight', 'mouthWidthRatio', 'mouthYOffsetRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <Slider {...PARAM_CONFIGS.mouthBend} min={-Math.round(maxMouthBend)} max={Math.round(maxMouthBend)} value={currentParams.mouthBend} onChange={(e) => handleParamChange('mouthBend', Number(e.target.value))} onRandomize={() => handleRandomizeParam('mouthBend')} /> <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Head Shape" value={currentParams.headShape} options={['ellipse', 'circle', 'square', 'triangle', 'inverted-triangle']} onChange={(v) => handleParamChange('headShape', v)} onRandomize={() => handleRandomizeParam('headShape')} /> {(currentParams.headShape === 'square') && ( <Slider {...PARAM_CONFIGS.headCornerRadius} value={currentParams.headCornerRadius} onChange={(e) => handleParamChange('headCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('headCornerRadius')} /> )} {(currentParams.headShape === 'triangle' || currentParams.headShape === 'inverted-triangle') && ( <Slider {...PARAM_CONFIGS.triangleCornerRadius} value={currentParams.triangleCornerRadius} onChange={(e) => handleParamChange('triangleCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('triangleCornerRadius')} /> )} </div> </div>}
+                                      {activeAppearanceSubTab === 'hair' && <div className="space-y-4"> <CheckboxControl label="Enable Hair" checked={currentParams.hair} onChange={e => handleParamChange('hair', e.target.checked)} onRandomize={() => handleRandomizeParam('hair')} /> {currentParams.hair && ( <div className="pt-4 border-t border-panel-header space-y-4"> {(['backHairWidthRatio', 'backHairHeightRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <Slider {...PARAM_CONFIGS.fringeHeightRatio} max={Math.floor(maxFringeHeightRatio)} value={currentParams.fringeHeightRatio} onChange={(e) => handleParamChange('fringeHeightRatio', Number(e.target.value))} onRandomize={() => handleRandomizeParam('fringeHeightRatio')} /> </div> )} </div>}
+                                      {activeAppearanceSubTab === 'eyes' && <div className="space-y-4"> {(['eyeSizeRatio', 'eyeSpacingRatio', 'pupilSizeRatio', 'upperEyelidCoverage', 'lowerEyelidCoverage', 'eyebrowWidthRatio', 'eyebrowHeightRatio', 'eyebrowYOffsetRatio', 'eyebrowAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <div className="pt-4 border-t border-panel-header space-y-3"> <CheckboxControl label="Eyelashes" checked={currentParams.eyelashes} onChange={e => handleParamChange('eyelashes', e.target.checked)} onRandomize={() => handleRandomizeParam('eyelashes')} /> {currentParams.eyelashes && ( <div className="pl-2 border-l-2 border-condorito-red/30 space-y-4"> {(['eyelashCount', 'eyelashLength', 'eyelashAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> )} </div> </div>}
+                                      {activeAppearanceSubTab === 'body' && <div className="space-y-4"> {(['neckHeight', 'neckWidthRatio', 'torsoHeight', 'torsoWidth', 'pelvisHeight', 'pelvisWidthRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Torso Shape" value={currentParams.torsoShape} options={['rectangle', 'circle', 'square', 'triangle', 'inverted-triangle']} onChange={(v) => handleParamChange('torsoShape', v)} onRandomize={() => handleRandomizeParam('torsoShape')} /> {(currentParams.torsoShape === 'square' || currentParams.torsoShape === 'rectangle') && ( <Slider {...PARAM_CONFIGS.torsoCornerRadius} value={currentParams.torsoCornerRadius} onChange={(e) => handleParamChange('torsoCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('torsoCornerRadius')} /> )} {(currentParams.torsoShape === 'triangle' || currentParams.torsoShape === 'inverted-triangle') && ( <Slider {...PARAM_CONFIGS.triangleCornerRadius} value={currentParams.triangleCornerRadius} onChange={(e) => handleParamChange('triangleCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('triangleCornerRadius')} /> )} </div> <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Pelvis Shape" value={currentParams.pelvisShape} options={['rectangle', 'horizontal-oval']} onChange={(v) => handleParamChange('pelvisShape', v)} onRandomize={() => handleRandomizeParam('pelvisShape')} /> </div> </div>}
+                                      {activeAppearanceSubTab === 'arms' && <div className="space-y-4"> <Slider {...PARAM_CONFIGS['armLength']} value={currentParams['armLength']} onChange={(e) => handleParamChange('armLength', Number(e.target.value))} onRandomize={() => handleRandomizeParam('armLength')} /> <div className="pt-4 border-t border-panel-header space-y-3"> <div className="flex items-center justify-between p-2 rounded-lg bg-panel-header"> <label htmlFor="limbSymmetry" className="font-medium text-condorito-brown select-none text-xs">Symmetry</label> <input type="checkbox" id="limbSymmetry" checked={limbSymmetry} onChange={e => setLimbSymmetry(e.target.checked)} className="h-5 w-5 rounded-md border-panel-header text-condorito-red focus:ring-condorito-red cursor-pointer" /> </div> </div> <div className="pt-4 border-t border-panel-header space-y-4"> {(['lArmWidth', 'rArmWidth', 'lHandSize', 'rHandSize', 'lArmAngle', 'lArmBend', 'rArmAngle', 'rArmBend'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k] as number} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> </div>}
+                                      {activeAppearanceSubTab === 'legs' && <div className="space-y-4"> <Slider {...PARAM_CONFIGS['legLength']} value={currentParams['legLength']} onChange={(e) => handleParamChange('legLength', Number(e.target.value))} onRandomize={() => handleRandomizeParam('legLength')} /> <div className="pt-4 border-t border-panel-header space-y-4"> {(['lLegWidth', 'rLegWidth', 'lFootSize', 'rFootSize', 'lLegAngle', 'lLegBend', 'rLegAngle', 'rLegBend'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k] as number} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> </div>}
+                                      {activeAppearanceSubTab === 'color' && <div className="space-y-3">
+                                        <CheckboxControl label="Body Outlines" checked={currentParams.bodyOutlines} onChange={e => handleParamChange('bodyOutlines', e.target.checked)} onRandomize={() => handleRandomizeParam('bodyOutlines')} />
+                                        <CheckboxControl label="Eye Outlines" checked={currentParams.eyeOutlines} onChange={e => handleParamChange('eyeOutlines', e.target.checked)} onRandomize={() => handleRandomizeParam('eyeOutlines')} />
+                                        <div className="pt-2 border-t border-panel-header" />
+                                        <ColorInput label="Body" value={currentParams.bodyColor} onChange={e => handleParamChange('bodyColor', e.target.value)} onRandomize={() => handleRandomizeParam('bodyColor')} />
+                                        <ColorInput label="Hair" value={currentParams.hairColor} onChange={e => handleParamChange('hairColor', e.target.value)} onRandomize={() => handleRandomizeParam('hairColor')} />
+                                        <ColorInput label="Outline" value={currentParams.outlineColor} onChange={e => handleParamChange('outlineColor', e.target.value)} onRandomize={() => handleRandomizeParam('outlineColor')} />
+                                        <ColorInput label="Pupil" value={currentParams.pupilColor} onChange={e => handleParamChange('pupilColor', e.target.value)} onRandomize={() => handleRandomizeParam('pupilColor')} />
+                                        <ColorInput label="Iris" value={currentParams.irisColor} onChange={e => handleParamChange('irisColor', e.target.value)} onRandomize={() => handleRandomizeParam('irisColor')} />
+                                      </div>}
+                                    </div>
+                                  </div>
+                                )}
+                                {activeMacroAppearanceTab === 'vestuario' && (
+                                    <div className="text-center text-xs text-condorito-brown p-8 bg-panel-back rounded-lg h-full flex flex-col justify-center items-center">
+                                        <p className="font-bold text-lg mb-2">🚧</p>
+                                        <p className="font-semibold">Editor de Vestuario</p>
+                                        <p className="mt-2">Próximamente: ¡Define el estilo de tu personaje con ropa y accesorios!</p>
+                                    </div>
+                                )}
+                                {activeMacroAppearanceTab === 'vistas' && (
+                                    <div className="space-y-4 p-3 bg-panel-back rounded-b-lg">
+                                        <Slider
+                                            {...PARAM_CONFIGS.viewAngle}
+                                            value={currentParams.viewAngle}
+                                            onChange={(e) => handleParamChange('viewAngle', Number(e.target.value))}
+                                            onRandomize={() => handleRandomizeParam('viewAngle')}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="w-2/3 h-full relative bg-condorito-pink">
+                           <CharacterCanvas
+                                panMode="direct"
+                                characters={characterToRender}
+                                comicPanels={null}
+                                backgroundOptions={backgroundOptions}
+                                showBoundingBoxes={false}
+                                comicAspectRatio="1:1"
+                                minComicFontSize={12} maxComicFontSize={18} comicLanguage="es" comicFontFamily="Comic Neue" comicTheme=""
+                                canvasResetToken={0}
+                                viewBox={viewBox}
+                                onViewBoxChange={setViewBox}
+                                currentPage={0} totalPages={0} onNextPage={() => {}} onPrevPage={() => {}}
+                            />
+                            <ZoomControls
+                                onZoomIn={() => handleZoom(1.2)}
+                                onZoomOut={() => handleZoom(1 / 1.2)}
+                                zoomPercentage={(400 / viewBox.width) * 100}
+                            />
+                        </div>
                     </div>
-                </div>}
+                )}
                 </>
             ) : (
-                <div className="text-center text-xs text-condorito-brown p-8 bg-panel-back rounded-lg">
+                <div className="text-center text-xs text-condorito-brown p-8 bg-panel-back rounded-lg flex-grow">
                     <p>No hay personajes seleccionados.</p>
                     <p className="mt-2">Añada un nuevo personaje para comenzar.</p>
                 </div>

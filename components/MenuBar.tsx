@@ -3,6 +3,10 @@ import Menu from './Menu';
 import { PanelKey } from './ControlPanel';
 
 interface MenuBarProps {
+  onNewCharacter: () => void;
+  onNewComic: () => void;
+  onNewUniverse: () => void;
+  onNewProject: () => void;
   onRandomize: () => void;
   onRandomizeComic: () => void;
   isRandomizingComic: boolean;
@@ -12,11 +16,15 @@ interface MenuBarProps {
   onExportComic: () => void;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport, onExportComic }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ onNewCharacter, onNewComic, onNewUniverse, onNewProject, onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport, onExportComic }) => {
+  const newItems = [
+    { label: 'Nuevo Proyecto', action: onNewProject },
+    { label: 'Nuevo Universo', action: onNewUniverse },
+    { label: 'Nuevo Personaje', action: onNewCharacter },
+    { label: 'Nuevo Cómic', action: onNewComic },
+  ];
+
   const fileItems = [
-    { label: 'Randomize Character', action: onRandomize },
-    { label: 'Randomize Comic', action: onRandomizeComic, disabled: isRandomizingComic },
-    { label: 'Exportar Cómic', action: onExportComic },
     {
       label: 'Importar',
       subItems: [
@@ -32,8 +40,15 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRand
         { label: 'Personajes', action: () => handleExport('characters') },
         { label: 'Historia', action: () => handleExport('story') },
       ]
-    }
+    },
+    { label: 'Exportar Cómic', action: onExportComic },
   ];
+  
+  const actionsItems = [
+    { label: 'Personaje Aleatorio', action: onRandomize },
+    { label: 'Cómic Aleatorio', action: onRandomizeComic, disabled: isRandomizingComic },
+  ];
+
   const universeItems = [
     { label: 'Editor de Universo', action: () => onMenuItemClick('LoreEditor') }
   ];
@@ -54,7 +69,9 @@ const MenuBar: React.FC<MenuBarProps> = ({ onRandomize, onRandomizeComic, isRand
        >
         <h1 className="text-base font-bold font-fredoka text-condorito-red select-none plop-logo-outline">Plop!</h1>
       </button>
-      <Menu title="File" items={fileItems} />
+      <Menu title="Nuevo" items={newItems} />
+      <Menu title="Archivo" items={fileItems} />
+      <Menu title="Acciones" items={actionsItems} />
       <Menu title="Universo" items={universeItems} />
       <Menu title="Personajes" items={characterItems} />
       <Menu title="Cómics" items={comicItems} />

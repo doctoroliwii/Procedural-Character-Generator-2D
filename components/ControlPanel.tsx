@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 // FIX: Add missing import for BackgroundOptions
 import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions } from '../types';
 import { CompulsivoLogo, DiceIcon } from './icons';
@@ -8,6 +8,7 @@ import LoreEditor from './NarrativeEditor';
 import CharacterEditor from './CharacterEditor';
 import TrendingThemePanel from './TrendingThemePanel';
 import { generateRandomAppearanceParams, getRandomParamValue } from '../services/characterGenerationService';
+import ProjectSettingsPanel from './ProjectSettingsPanel';
 
 interface ControlPanelProps {
   panels: Record<PanelKey, PanelState>;
@@ -23,6 +24,10 @@ interface ControlPanelProps {
   // Comic controls
   comicTheme: string;
   onComicThemeChange: (value: string) => void;
+  comicScene: string;
+  onComicSceneChange: (value: string) => void;
+  onRandomizeComicScene: () => void;
+  isRandomizingScene: boolean;
   onAppendComicTheme: (theme: string) => void;
   numComicPanels: number;
   onNumComicPanelsChange: (value: number) => void;
@@ -64,9 +69,10 @@ interface ControlPanelProps {
   characterEditorTab: 'narrative' | 'appearance';
   onCharacterEditorTabChange: (tab: 'narrative' | 'appearance') => void;
   setApiError: (error: string | null) => void;
+  onGenerateProject: (settings: { name: RichText; genre: RichText; seasons: number; episodes: number; }) => Promise<void>;
 }
 
-export type PanelKey = 'Options' | 'About' | 'Comic' | 'LoreEditor' | 'CharacterEditor' | 'TrendingTheme';
+export type PanelKey = 'Options' | 'About' | 'Comic' | 'LoreEditor' | 'CharacterEditor' | 'TrendingTheme' | 'ProjectSettings';
 
 export interface PanelState {
   isOpen: boolean;
@@ -79,13 +85,13 @@ const stringToRichText = (text: string, source: 'user' | 'ai'): RichText => [{ t
 
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { 
-    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
+    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
     // Narrative props
     lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, isGeneratingSimpleCharacters, onRegenerateCharacterName, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
-    setApiError,
+    setApiError, onGenerateProject
   } = props;
   
-  const [activeComicTab, setActiveComicTab] = React.useState<'main' | 'characters' | 'options'>('main');
+  const [activeComicTab, setActiveComicTab] = React.useState<'main' | 'characters' | 'scene'>('main');
   const [numSimpleChars, setNumSimpleChars] = React.useState(2);
 
   const panelsToRender = fullScreenPanelKey
@@ -142,10 +148,20 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
         if (key === 'LoreEditor') title = 'Editor de Universo';
         if (key === 'CharacterEditor') title = 'Editor de Personajes';
         if (key === 'TrendingTheme') title = 'Trending Theme';
+        if (key === 'ProjectSettings') title = 'Project Settings';
 
 
         let content: React.ReactNode = null;
         switch (key) {
+          case 'ProjectSettings': {
+            content = (
+              <ProjectSettingsPanel
+                onGenerateProject={onGenerateProject}
+                isGenerating={isGeneratingComic}
+              />
+            );
+            break;
+          }
           case 'TrendingTheme':
             content = (
               <TrendingThemePanel
@@ -218,7 +234,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                     <div className="flex gap-1 p-1 bg-panel-header rounded-lg">
                       <SubTabButton label="Main" active={activeComicTab === 'main'} onClick={() => setActiveComicTab('main')} />
                       <SubTabButton label="Characters" active={activeComicTab === 'characters'} onClick={() => setActiveComicTab('characters')} />
-                      <SubTabButton label="Options" active={activeComicTab === 'options'} onClick={() => setActiveComicTab('options')} />
+                      <SubTabButton label="Scene" active={activeComicTab === 'scene'} onClick={() => setActiveComicTab('scene')} />
                     </div>
 
                     <div className="pt-2">
@@ -248,6 +264,20 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                           )}
                            <div className="pt-4 mt-4 border-t border-panel-header space-y-3">
                              <div> <label htmlFor="language-select" className="block text-xs font-medium text-condorito-brown mb-1 select-none">Language</label> <select id="language-select" value={comicLanguage} onChange={(e) => onComicLanguageChange(e.target.value)} className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white"> <option value="es">Español</option> <option value="en">Inglés</option> <option value="ja">Japonés</option> <option value="zh">Chino</option> <option value="ru">Ruso</option> <option value="hi">Hindi</option> </select> </div>
+                             <ShapeSelector label="Aspect Ratio" value={comicAspectRatio} options={['1:1', '16:9', '9:16']} onChange={(v) => onComicAspectRatioChange(v as '1:1' | '16:9' | '9:16')} />
+                             <div>
+                               <label htmlFor="font-select" className="block text-xs font-medium text-condorito-brown mb-1 select-none">Font Family</label>
+                               <select 
+                                 id="font-select" 
+                                 value={comicFontFamily} 
+                                 onChange={(e) => onComicFontFamilyChange(e.target.value)} 
+                                 className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white"
+                               >
+                                 {fontOptions.map(font => (
+                                   <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
+                                 ))}
+                               </select>
+                             </div>
                              <Slider label="Min Font Size" min={10} max={27} step={1} value={minComicFontSize} onChange={e => onMinComicFontSizeChange(Number(e.target.value))} />
                              <Slider label="Max Font Size" min={10} max={27} step={1} value={maxComicFontSize} onChange={e => onMaxComicFontSizeChange(Number(e.target.value))} />
                            </div>
@@ -365,22 +395,20 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                           )}
                         </div>
                       )}
-                      {activeComicTab === 'options' && (
+                      {activeComicTab === 'scene' && (
                         <div className="space-y-4">
-                          <ShapeSelector label="Aspect Ratio" value={comicAspectRatio} options={['1:1', '16:9', '9:16']} onChange={(v) => onComicAspectRatioChange(v as '1:1' | '16:9' | '9:16')} />
-                          <div>
-                            <label htmlFor="font-select" className="block text-xs font-medium text-condorito-brown mb-1 select-none">Font Family</label>
-                            <select 
-                              id="font-select" 
-                              value={comicFontFamily} 
-                              onChange={(e) => onComicFontFamilyChange(e.target.value)} 
-                              className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white"
-                            >
-                              {fontOptions.map(font => (
-                                <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
-                              ))}
-                            </select>
-                          </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <label htmlFor="comic-scene" className="block text-xs font-medium text-condorito-brown select-none">Scene Description</label>
+                                <button onClick={onRandomizeComicScene} disabled={isRandomizingScene} className="p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Randomize Scene" title="Randomize Scene">
+                                    <DiceIcon className={`w-4 h-4 ${isRandomizingScene ? 'animate-spin' : ''}`} />
+                                </button>
+                              </div>
+                              <textarea id="comic-scene" value={comicScene} onChange={e => onComicSceneChange(e.target.value)} rows={4} className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white text-condorito-brown" placeholder="e.g., Two friends in a park" />
+                            </div>
+                            <p className="text-xs text-condorito-brown/80 select-none">
+                                Describe el lugar y la situación donde se desarrolla toda la tira cómica para mantener la coherencia del fondo.
+                            </p>
                         </div>
                       )}
                     </div>
@@ -458,14 +486,14 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
           <ControlModule
             key={key}
             title={title}
-            isFullScreen={isFullScreen}
+            isFullScreen={key === 'CharacterEditor' || isFullScreen}
             initialPosition={panelState.position}
             zIndex={panelState.zIndex}
             onClose={() => togglePanel(key)}
             onPositionChange={(pos) => updatePanelPosition(key, pos)}
             onFocus={() => bringToFront(key)}
             wide={isWidePanel}
-            fullHeight={key === 'Comic'}
+            fullHeight={key === 'Comic' || (key === 'CharacterEditor' && characterEditorTab === 'appearance')}
           >
             {content}
           </ControlModule>

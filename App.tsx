@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment } from './types';
+import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment, Project } from './types';
 import { INITIAL_PARAMS, PARAM_CONFIGS } from './constants';
 import CharacterCanvas from './components/CharacterCanvas';
 import ControlPanel, { PanelKey, PanelState } from './components/ControlPanel';
 import MenuBar from './components/MenuBar';
 import WelcomeModal from './components/WelcomeModal';
-import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, ComicScript, generatePanelBackground, generateFullCharacterProfile, generateCharacterName } from './services/geminiService';
+import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, ComicScript, generatePanelBackground, generateFullCharacterProfile, generateCharacterName, generateSceneDescription, generateVariantPanelBackground } from './services/geminiService';
 import { CloseIcon, WarningIcon } from './components/icons';
 import { generateRandomParams } from './services/characterGenerationService';
 import StatusBar from './components/StatusBar';
+import NavigatorPanel from './components/NavigatorPanel';
 
 const QUOTA_ERROR_MESSAGE = 'You have exceeded your API quota. Please <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener noreferrer" class="text-condorito-red hover:underline font-semibold">check your plan and billing details</a>. You can monitor your usage <a href="https://ai.dev/usage?tab=rate-limit" target="_blank" rel="noopener noreferrer" class="text-condorito-red hover:underline font-semibold">here</a>.';
 
@@ -178,12 +179,14 @@ function App() {
   
   // Simple Comic state
   const [comicTheme, setComicTheme] = useState('Típico chiste chileno');
+  const [comicScene, setComicScene] = useState('Dos amigos conversando en un parque con la cordillera de los Andes de fondo');
   const [numComicPanels, setNumComicPanels] = useState(4);
   
   // Shared Comic state
   const [comicPanels, setComicPanels] = useState<ComicPanelData[] | null>(null);
   const [isGeneratingComic, setIsGeneratingComic] = useState(false);
   const [isRandomizingComic, setIsRandomizingComic] = useState(false);
+  const [isRandomizingScene, setIsRandomizingScene] = useState(false);
   const [isGeneratingSimpleCharacters, setIsGeneratingSimpleCharacters] = useState(false);
   const [comicAspectRatio, setComicAspectRatio] = useState<'1:1' | '16:9' | '9:16'>('1:1');
   const [minComicFontSize, setMinComicFontSize] = useState(12);
@@ -200,6 +203,10 @@ function App() {
   const [apiError, setApiError] = useState<string | null>(null);
   
   const [characterEditorTab, setCharacterEditorTab] = useState<'narrative' | 'appearance'>('narrative');
+
+  // Project State
+  const [project, setProject] = useState<Project | null>(null);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   
   const comicCanvasRef = useRef<{ export: () => void }>(null);
 
@@ -211,6 +218,7 @@ function App() {
     Options: { isOpen: false, position: { x: 80, y: 120 }, zIndex: 1 },
     About: { isOpen: false, position: { x: 90, y: 130 }, zIndex: 1 },
     TrendingTheme: { isOpen: false, position: { x: 250, y: 40 }, zIndex: 1 },
+    ProjectSettings: { isOpen: false, position: { x: 40, y: 40 }, zIndex: 1 },
   });
 
   const openPanel = useCallback((key: PanelKey) => {
@@ -221,9 +229,64 @@ function App() {
         return newPanels;
     });
   }, []);
+
+  // FIX: Moved panel management functions before their usage to prevent "used before declaration" errors.
+  const bringToFront = useCallback((key: PanelKey) => {
+    setPanels(prev => {
+        const maxZ = Math.max(...Object.values(prev).map((p: PanelState) => p.zIndex));
+        if (prev[key].zIndex === maxZ) return prev;
+        const newPanels = { ...prev };
+        newPanels[key] = { ...newPanels[key], zIndex: maxZ + 1 };
+        return newPanels;
+    });
+  }, []);
+
+  const togglePanel = useCallback((key: PanelKey, openerKey?: PanelKey) => {
+    setPanels(prev => {
+        const newPanels = { ...prev };
+        const panelState = newPanels[key];
+        const isOpen = !panelState.isOpen;
+        let zIndex = panelState.zIndex;
+        let position = panelState.position;
+
+        if (isOpen) {
+            const maxZ = Math.max(...Object.values(newPanels).map((p: PanelState) => p.zIndex));
+            zIndex = maxZ + 1;
+            if (openerKey && prev[openerKey]?.isOpen) {
+                const openerState = prev[openerKey];
+                const panelWidth = 224; // w-56
+                const gap = 16;
+                const parentWidth = window.innerWidth;
+                
+                let newX = openerState.position.x + panelWidth + gap;
+                if (newX + panelWidth > parentWidth) {
+                    newX = openerState.position.x - panelWidth - gap;
+                }
+                
+                newX = Math.max(0, newX);
+                newX = Math.min(newX, parentWidth - panelWidth);
+
+                position = {
+                    x: newX,
+                    y: openerState.position.y
+                };
+            }
+        }
+        newPanels[key] = { ...panelState, isOpen, zIndex, position };
+        return newPanels;
+    });
+  }, []);
+
+  const updatePanelPosition = useCallback((key: PanelKey, position: { x: number; y: number }) => {
+    setPanels(prev => ({
+        ...prev,
+        [key]: { ...prev[key], position }
+    }));
+  }, []);
   
   const handleNewCharacter = useCallback(() => {
     setComicPanels(null);
+    setProject(null);
     const newProfile: CharacterProfile = {
       id: `char-${Date.now()}`,
       name: stringToRichText('New Character'),
@@ -258,6 +321,7 @@ function App() {
 
   const handleNewComic = useCallback(() => {
     setComicPanels([]);
+    setProject(null);
     setCharacterProfiles([]);
     setSelectedCharId(null);
     openPanel('Comic');
@@ -266,14 +330,23 @@ function App() {
 
   const handleNewUniverse = useCallback(() => {
     setComicPanels(null);
+    setProject(null);
     setCharacterProfiles([]);
     setSelectedCharId(null);
     openPanel('LoreEditor');
     setAppState('editing');
   }, [openPanel]);
 
+  const handleNewProject = useCallback(() => {
+    setComicPanels(null);
+    setProject(null);
+    openPanel('ProjectSettings');
+    setAppState('editing');
+  }, [openPanel]);
+
   const handleRandomize = useCallback(() => {
     setComicPanels(null);
+    setProject(null);
     const randomParams = generateRandomParams();
     randomParams.bodyOutlines = true;
     randomParams.eyeOutlines = true;
@@ -303,6 +376,11 @@ function App() {
   };
   
   useEffect(() => {
+    if (project || comicPanels !== null || panels.CharacterEditor.isOpen) {
+      setCharacters([]);
+      return;
+    }
+    
     const selectedProfile = characterProfiles.find(p => p.id === selectedCharId);
     
     const instances = selectedProfile && selectedProfile.characterParams ? 
@@ -315,7 +393,7 @@ function App() {
         }] : [];
     
     setCharacters(instances);
-  }, [characterProfiles, selectedCharId]);
+  }, [characterProfiles, selectedCharId, project, comicPanels, panels.CharacterEditor.isOpen]);
 
   const generatePanelLayouts = (count: number) => {
     if (count <= 0) return [];
@@ -401,7 +479,7 @@ function App() {
     return newParams;
   };
 
-  const processComicScript = useCallback(async (script: ComicScript, characterParamsList: CharacterParams[]) => {
+  const processComicScript = useCallback(async (script: ComicScript, characterParamsList: CharacterParams[]): Promise<ComicPanelData[]> => {
       const newPanels: ComicPanelData[] = [];
       const panelLayouts = generatePanelLayouts(script.panels.length);
 
@@ -417,8 +495,19 @@ function App() {
           else if (numPanels === 6) { layoutMap = [1, 0, 3, 2, 5, 4]; }
       }
 
-      const backgroundPromises = script.panels.map(panel => generatePanelBackground(panel.description));
-      const backgroundImages = await Promise.all(backgroundPromises);
+      let backgroundImages: string[] = [];
+      if (script.panels.length > 0) {
+        // 1. Generate the first panel's background to use as a reference.
+        const firstBg = await generatePanelBackground(script.panels[0].description);
+        
+        // 2. If there are more panels, generate them as variants of the first one for consistency.
+        const variantPromises = script.panels.slice(1).map(panel => 
+            generateVariantPanelBackground(firstBg, panel.description)
+        );
+        
+        const variantBgs = await Promise.all(variantPromises);
+        backgroundImages = [firstBg, ...variantBgs];
+      }
 
       for (let i = 0; i < script.panels.length; i++) {
         const panelScript = script.panels[i];
@@ -445,15 +534,20 @@ function App() {
         
         newPanels.push({ id: `panel-${i}-${Date.now()}`, layout, characters: panelCharacters, characterIdsInPanel: panelScript.charactersInPanel, dialogues: panelScript.dialogues || [], backgroundColor: `hsl(${Math.random() * 360}, 50%, 95%)`, description: panelScript.description, shotType: panelScript.shotType || 'medium-shot', backgroundImageB64: backgroundImages[i] });
       }
-      setComicPanels(newPanels);
+      return newPanels;
   }, [comicLanguage]);
 
   const handleGenerateComic = useCallback(async (mode: 'simple' | 'custom', options?: { theme?: string; panels?: number; language?: string; }, customData?: { lore: Lore, story: Story, characterProfiles: CharacterProfile[] }) => {
     setIsGeneratingComic(true);
     setApiError(null);
     setComicPanels([]);
+    setProject(null);
     
     try {
+      let script: ComicScript;
+      let characterParamsList: CharacterParams[];
+      const sceneToUse = comicScene;
+      
       if (mode === 'simple') {
         let profilesToUse: CharacterProfile[];
         if (characterProfiles.length > 0) {
@@ -492,11 +586,8 @@ function App() {
         const themeToUse = options?.theme ?? comicTheme;
         const panelsToUse = options?.panels ?? numComicPanels;
         const languageToUse = options?.language ?? comicLanguage;
-        const script = await generateComicScript(themeToUse, panelsToUse, languageToUse, profilesToUse.length);
-        if (!script || !script.panels || script.panels.length === 0) throw new Error("Received an empty or invalid script from the API.");
-
-        const characterParamsList = profilesToUse.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
-        await processComicScript(script, characterParamsList);
+        script = await generateComicScript(themeToUse, panelsToUse, languageToUse, profilesToUse.length, sceneToUse);
+        characterParamsList = profilesToUse.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
 
       } else { // Custom Mode
         const loreToUse = customData?.lore ?? lore;
@@ -506,7 +597,7 @@ function App() {
         if (!storyToUse || !loreToUse || profilesToUse.length === 0) {
           throw new Error("Please define Lore, Characters, and a Story in the Narrative Editor first.");
         }
-        const script = await generateComicScriptFromStory(storyToUse, loreToUse, profilesToUse, numComicPanels, comicLanguage);
+        script = await generateComicScriptFromStory(storyToUse, loreToUse, profilesToUse, numComicPanels, comicLanguage, sceneToUse);
 
         if (!customData) { // Only update profiles if not using custom one-off data
           const updatedProfiles = profilesToUse.map(p => {
@@ -522,9 +613,13 @@ function App() {
           setCharacterProfiles(updatedProfiles);
         }
         
-        const characterParamsInStory = storyToUse.characterProfileIds.map(id => profilesToUse.find(p => p.id === id)?.characterParams).filter(Boolean) as CharacterParams[];
-        await processComicScript(script, characterParamsInStory);
+        characterParamsList = storyToUse.characterProfileIds.map(id => profilesToUse.find(p => p.id === id)?.characterParams).filter(Boolean) as CharacterParams[];
       }
+      
+      if (!script || !script.panels || script.panels.length === 0) throw new Error("Received an empty or invalid script from the API.");
+      const newPanels = await processComicScript(script, characterParamsList);
+      setComicPanels(newPanels);
+
     } catch (error: any) {
       console.error("Failed to generate comic", error);
       const errorMessage = error.message || String(error);
@@ -536,7 +631,7 @@ function App() {
     } finally {
       setIsGeneratingComic(false);
     }
-  }, [comicTheme, numComicPanels, comicLanguage, story, lore, characterProfiles, processComicScript]);
+  }, [comicTheme, numComicPanels, comicLanguage, comicScene, story, lore, characterProfiles, processComicScript]);
   
   const handleRandomizeComic = useCallback(async () => {
     setApiError(null);
@@ -725,6 +820,7 @@ function App() {
   const handleGenerateAllAndComic = useCallback(async () => {
     setIsGeneratingComic(true);
     setApiError(null);
+    setProject(null);
     try {
       // 1. Generate Lore
       const loreResult = await generateLore('Sci-fi Comedy');
@@ -792,6 +888,66 @@ function App() {
     }
   }, [handleGenerateComic]);
 
+  const handleGenerateProject = useCallback(async (settings: { name: RichText, genre: RichText, seasons: number, episodes: number }) => {
+    setIsGeneratingComic(true);
+    setApiError(null);
+    setProject(null);
+    setComicPanels(null);
+
+    const { name, genre, seasons, episodes } = settings;
+    const projectLore = lore;
+    const projectCharacters = characterProfiles;
+
+    if (!projectLore || projectCharacters.length === 0) {
+      setApiError("A universe and characters must be loaded or generated before creating a project.");
+      setIsGeneratingComic(false);
+      return;
+    }
+    
+    // Ensure all characters have params
+    const updatedProfiles = projectCharacters.map(p => {
+        if (!p.characterParams) {
+            let params = generateRandomParams();
+            params.eyeTracking = false;
+            params.bodyOutlines = true;
+            params.eyeOutlines = true;
+            return { ...p, characterParams: params };
+        }
+        return p;
+    });
+    setCharacterProfiles(updatedProfiles);
+    const characterParamsList = updatedProfiles.map(p => p.characterParams!);
+
+    try {
+        const pages: ComicPanelData[][] = [];
+        for (let i = 0; i < episodes; i++) {
+            const episodeTheme = `${richTextToString(genre)}: Episodio ${i + 1} de la temporada ${seasons} de "${richTextToString(name)}"`;
+            const script = await generateComicScript(episodeTheme, numComicPanels, comicLanguage, characterParamsList.length, comicScene);
+            const newPanels = await processComicScript(script, characterParamsList);
+            pages.push(newPanels);
+        }
+        
+        const newProject: Project = {
+          name, genre, seasons, episodes,
+          lore: projectLore,
+          characterProfiles: updatedProfiles,
+          comicPages: pages
+        };
+        setProject(newProject);
+        setCurrentPageIndex(0);
+        setComicPanels(pages[0]);
+        togglePanel('ProjectSettings'); // Close settings panel
+        openPanel('Comic'); // Open comic viewer
+        
+    } catch (error: any) {
+        console.error("Failed to generate project", error);
+        setApiError('A failure occurred during the project generation process. Please try again.');
+    } finally {
+        setIsGeneratingComic(false);
+    }
+  }, [lore, characterProfiles, numComicPanels, comicLanguage, comicScene, processComicScript, openPanel, togglePanel]);
+
+
   const handleExportComic = useCallback(() => {
     comicCanvasRef.current?.export();
   }, []);
@@ -817,63 +973,10 @@ function App() {
   }, [uiScale]);
 
   useEffect(() => {
-    if (comicPanels !== null) {
+    if (comicPanels !== null || project !== null) {
       setCharacters([]);
     }
-  }, [comicPanels]);
-
-  const bringToFront = useCallback((key: PanelKey) => {
-    setPanels(prev => {
-        const maxZ = Math.max(...Object.values(prev).map((p: PanelState) => p.zIndex));
-        if (prev[key].zIndex === maxZ) return prev;
-        const newPanels = { ...prev };
-        newPanels[key] = { ...newPanels[key], zIndex: maxZ + 1 };
-        return newPanels;
-    });
-  }, []);
-
-  const togglePanel = useCallback((key: PanelKey, openerKey?: PanelKey) => {
-    setPanels(prev => {
-        const newPanels = { ...prev };
-        const panelState = newPanels[key];
-        const isOpen = !panelState.isOpen;
-        let zIndex = panelState.zIndex;
-        let position = panelState.position;
-
-        if (isOpen) {
-            const maxZ = Math.max(...Object.values(newPanels).map((p: PanelState) => p.zIndex));
-            zIndex = maxZ + 1;
-            if (openerKey && prev[openerKey]?.isOpen) {
-                const openerState = prev[openerKey];
-                const panelWidth = 224; // w-56
-                const gap = 16;
-                const parentWidth = window.innerWidth;
-                
-                let newX = openerState.position.x + panelWidth + gap;
-                if (newX + panelWidth > parentWidth) {
-                    newX = openerState.position.x - panelWidth - gap;
-                }
-                
-                newX = Math.max(0, newX);
-                newX = Math.min(newX, parentWidth - panelWidth);
-
-                position = {
-                    x: newX,
-                    y: openerState.position.y
-                };
-            }
-        }
-        newPanels[key] = { ...panelState, isOpen, zIndex, position };
-        return newPanels;
-    });
-  }, []);
-
-  const updatePanelPosition = useCallback((key: PanelKey, position: { x: number; y: number }) => {
-    setPanels(prev => ({
-        ...prev,
-        [key]: { ...prev[key], position }
-    }));
-  }, []);
+  }, [comicPanels, project]);
   
   // FIX: Added a handler to properly update backgroundOptions state from a partial object.
   const handleBackgroundOptionsChange = useCallback((options: Partial<BackgroundOptions>) => {
@@ -974,11 +1077,64 @@ function App() {
     });
   }, []);
 
+  const handleRandomizeComicScene = useCallback(async () => {
+    setIsRandomizingScene(true);
+    setApiError(null);
+    try {
+        const scene = await generateSceneDescription(comicTheme, comicLanguage);
+        setComicScene(scene);
+    } catch (error: any) {
+        console.error("Failed to generate scene:", error);
+        const errorMessage = error.message || String(error);
+        if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+            setApiError(QUOTA_ERROR_MESSAGE);
+        } else {
+            setApiError('Failed to generate a scene. Please try again.');
+        }
+    } finally {
+        setIsRandomizingScene(false);
+    }
+  }, [comicTheme, comicLanguage, setApiError]);
+
+  const handleNextPage = useCallback(() => {
+    if (project && currentPageIndex < project.comicPages.length - 1) {
+      const newIndex = currentPageIndex + 1;
+      setCurrentPageIndex(newIndex);
+      setComicPanels(project.comicPages[newIndex]);
+    }
+  }, [project, currentPageIndex]);
+
+  const handlePrevPage = useCallback(() => {
+    if (project && currentPageIndex > 0) {
+      const newIndex = currentPageIndex - 1;
+      setCurrentPageIndex(newIndex);
+      setComicPanels(project.comicPages[newIndex]);
+    }
+  }, [project, currentPageIndex]);
+
   const fullScreenPanelKey = panels.LoreEditor.isOpen
     ? 'LoreEditor'
-    : (panels.CharacterEditor.isOpen && characterEditorTab === 'narrative'
+    : (panels.CharacterEditor.isOpen
       ? 'CharacterEditor'
       : null);
+
+  const handleZoom = useCallback((factor: number) => {
+    setViewBox(prev => {
+      const newWidth = prev.width / factor;
+      const newHeight = prev.height / factor;
+      const centerX = prev.x + prev.width / 2;
+      const centerY = prev.y + prev.height / 2;
+      const newX = centerX - newWidth / 2;
+      const newY = centerY - newHeight / 2;
+      return { x: newX, y: newY, width: newWidth, height: newHeight };
+    });
+  }, []);
+
+  const isComicMode = comicPanels !== null;
+  const canvasHeight = 700;
+  const canvasWidth = isComicMode
+    ? (comicAspectRatio === '1:1' ? canvasHeight : comicAspectRatio === '16:9' ? canvasHeight * (16 / 9) : canvasHeight * (9 / 16))
+    : 400;
 
 
   return (
@@ -988,6 +1144,7 @@ function App() {
           onNewCharacter={handleNewCharacter}
           onNewComic={handleNewComic}
           onNewUniverse={handleNewUniverse}
+          onNewProject={handleNewProject}
         />
       )}
       {apiError && (
@@ -1000,6 +1157,10 @@ function App() {
           </div>
       )}
       <MenuBar 
+        onNewCharacter={handleNewCharacter}
+        onNewComic={handleNewComic}
+        onNewUniverse={handleNewUniverse}
+        onNewProject={handleNewProject}
         onRandomize={handleRandomize} 
         onRandomizeComic={handleRandomizeComic} 
         isRandomizingComic={isRandomizingComic} 
@@ -1022,9 +1183,25 @@ function App() {
             comicFontFamily={comicFontFamily}
             comicTheme={comicTheme}
             canvasResetToken={canvasResetToken} 
+            viewBox={viewBox}
             onViewBoxChange={setViewBox}
+            currentPage={currentPageIndex}
+            totalPages={project ? project.comicPages.length : 0}
+            onNextPage={handleNextPage}
+            onPrevPage={handlePrevPage}
         />
       </main>
+      {!fullScreenPanelKey && (
+        <NavigatorPanel
+          viewBox={viewBox}
+          canvasWidth={canvasWidth}
+          canvasHeight={canvasHeight}
+          comicPanels={comicPanels}
+          characters={characters}
+          onViewBoxChange={setViewBox}
+          onZoom={handleZoom}
+        />
+      )}
       <StatusBar viewBox={viewBox} />
        <ControlPanel
           panels={panels}
@@ -1039,6 +1216,10 @@ function App() {
           onComicFontFamilyChange={setComicFontFamily}
           comicTheme={comicTheme}
           onComicThemeChange={setComicTheme}
+          comicScene={comicScene}
+          onComicSceneChange={setComicScene}
+          onRandomizeComicScene={handleRandomizeComicScene}
+          isRandomizingScene={isRandomizingScene}
           onAppendComicTheme={handleAppendComicTheme}
           numComicPanels={numComicPanels}
           onNumComicPanelsChange={setNumComicPanels}
@@ -1078,6 +1259,7 @@ function App() {
           characterEditorTab={characterEditorTab}
           onCharacterEditorTabChange={setCharacterEditorTab}
           setApiError={setApiError}
+          onGenerateProject={handleGenerateProject}
         />
     </div>
   );

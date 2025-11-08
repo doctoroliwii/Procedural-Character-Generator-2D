@@ -55,6 +55,7 @@ export const INITIAL_PARAMS: CharacterParams = {
   backHairWidthRatio: 200,
   backHairHeightRatio: 100,
   fringeHeightRatio: 30,
+  viewAngle: 0,
   bodyColor: '#E97356',
   irisColor: '#4A2E2C',
   outlineColor: '#4A2E2C',
@@ -90,6 +91,7 @@ export const PARAM_CONFIGS: Record<Exclude<CharacterParamKey, 'bodyOutlines' | '
   eyebrowHeightRatio: { min: 20, max: 60, step: 1, label: 'Eyebrow Height' },
   eyebrowYOffsetRatio: { min: 10, max: 35, step: 1, label: 'Eyebrow Position' },
   eyebrowAngle: { min: -45, max: 45, step: 1, label: 'Eyebrow Angle' },
+  viewAngle: { min: -90, max: 90, step: 1, label: 'Ángulo de Vista' },
   
   // Body
   neckHeight: { min: 10, max: 50, step: 1, label: 'Neck Height' },
