@@ -1,11 +1,13 @@
 import React from 'react';
-import type { CharacterParams, BackgroundOptions, Lore, CharacterProfile, Story, ComicPanelData, RichText } from '../types';
+// FIX: Add missing import for BackgroundOptions
+import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions } from '../types';
+import { CompulsivoLogo, DiceIcon } from './icons';
 import Slider from './Slider';
 import ControlModule from './ControlModule';
 import LoreEditor from './NarrativeEditor';
 import CharacterEditor from './CharacterEditor';
-import { DiceIcon, CompulsivoLogo } from './icons';
 import TrendingThemePanel from './TrendingThemePanel';
+import { generateRandomAppearanceParams, getRandomParamValue } from '../services/characterGenerationService';
 
 interface ControlPanelProps {
   panels: Record<PanelKey, PanelState>;
@@ -45,14 +47,15 @@ interface ControlPanelProps {
   lore: Lore | null;
   onLoreChange: (lore: Lore | null) => void;
   characterProfiles: CharacterProfile[];
-  onCharacterProfilesChange: (profiles: CharacterProfile[]) => void;
+  onCharacterProfilesChange: (updater: (prev: CharacterProfile[]) => CharacterProfile[]) => void;
   selectedCharId: string | null;
   onSelectedCharIdChange: (id: string | null) => void;
   onDeleteCharacter: (id: string) => void;
   story: Story | null;
   onStoryChange: (story: Story | null) => void;
   onGenerateNarrativeElement: (elementType: 'lore' | 'character' | 'story', context?: any) => Promise<any>;
-  onGenerateSimpleCharacters: (count: number) => void;
+  onGenerateSimpleCharacters: (count: number) => Promise<void>;
+  onRegenerateCharacterName: (characterId: string) => void;
   comicMode: 'simple' | 'custom';
   onComicModeChange: (mode: 'simple' | 'custom') => void;
   characterEditorTab: 'narrative' | 'appearance';
@@ -69,12 +72,13 @@ export interface PanelState {
 }
 
 const richTextToString = (value: RichText | undefined): string => value?.map(s => s.text).join('') || '';
+const stringToRichText = (text: string, source: 'user' | 'ai'): RichText => [{ text, source }];
 
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { 
     panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicTheme, onComicThemeChange, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
     // Narrative props
-    lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
+    lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, onRegenerateCharacterName, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
     setApiError,
   } = props;
   
@@ -84,6 +88,43 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const panelsToRender = fullScreenPanelKey
     ? [fullScreenPanelKey]
     : (Object.keys(panels) as PanelKey[]);
+
+    
+  const handleUpdateCharacterName = (characterId: string, newName: string) => {
+    onCharacterProfilesChange(prev => prev.map(p => 
+        p.id === characterId ? {...p, name: stringToRichText(newName, 'user')} : p
+    ));
+  };
+  
+  const handleUpdateCharacterParam = (characterId: string, param: keyof CharacterParams, value: any) => {
+    onCharacterProfilesChange(prev => prev.map(p => {
+        if (p.id === characterId && p.characterParams) {
+            return {
+                ...p,
+                characterParams: { ...p.characterParams, [param]: value }
+            };
+        }
+        return p;
+    }));
+  };
+
+  const handleRandomizeCharacterColor = (characterId: string) => {
+    const newColor = getRandomParamValue('bodyColor');
+    handleUpdateCharacterParam(characterId, 'bodyColor', newColor);
+  };
+
+  const handleRandomizeCharacterAppearance = (characterId: string) => {
+    onCharacterProfilesChange(prev => prev.map(p => {
+        if (p.id === characterId) {
+            return {
+                ...p,
+                characterParams: generateRandomAppearanceParams(p.characterParams),
+            };
+        }
+        return p;
+    }));
+  };
+
 
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
@@ -239,21 +280,68 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                               {characterProfiles.length > 0 ? (
                                 <div className="space-y-2 pt-4 border-t border-panel-header">
                                   <p className="text-xs text-condorito-brown select-none">
-                                    Personajes actuales. Haz clic para editar su apariencia.
+                                    Personajes actuales.
                                   </p>
-                                  {characterProfiles.map(profile => (
-                                    <button 
-                                      key={profile.id}
-                                      onClick={() => {
-                                        onSelectedCharIdChange(profile.id);
-                                        onCharacterEditorTabChange('appearance');
-                                        togglePanel('CharacterEditor');
-                                      }}
-                                      className="w-full text-left p-2 bg-panel-header rounded-lg hover:bg-panel-border transition text-xs font-semibold"
-                                    >
-                                      {richTextToString(profile.name)}
-                                    </button>
-                                  ))}
+                                  {characterProfiles.map(profile => {
+                                      const [name, setName] = React.useState(richTextToString(profile.name));
+                                      React.useEffect(() => {
+                                        setName(richTextToString(profile.name));
+                                      }, [profile.name]);
+
+                                      const handleNameBlur = () => {
+                                        if (name !== richTextToString(profile.name)) {
+                                          handleUpdateCharacterName(profile.id, name);
+                                        }
+                                      };
+
+                                      if (!profile.characterParams) return null;
+
+                                      return (
+                                        <div key={profile.id} className="p-3 bg-panel-header rounded-lg space-y-3">
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="text"
+                                              value={name}
+                                              onChange={e => setName(e.target.value)}
+                                              onBlur={handleNameBlur}
+                                              onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                                              className="flex-grow p-1.5 border border-panel-border rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red"
+                                              aria-label="Character name"
+                                            />
+                                            <button onClick={() => onRegenerateCharacterName(profile.id)} className="p-1.5 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Regenerar nombre">
+                                              <DiceIcon className="w-4 h-4" />
+                                            </button>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-2 text-xs">
+                                            <div className="flex items-center gap-2 p-1.5 bg-white border border-panel-border rounded-md">
+                                              <label htmlFor={`color-${profile.id}`} className="font-semibold text-condorito-brown">Color</label>
+                                              <input
+                                                type="color"
+                                                id={`color-${profile.id}`}
+                                                value={profile.characterParams.bodyColor}
+                                                onChange={e => handleUpdateCharacterParam(profile.id, 'bodyColor', e.target.value)}
+                                                className="w-6 h-6 p-0 border-none rounded cursor-pointer bg-transparent"
+                                              />
+                                              <button onClick={() => handleRandomizeCharacterColor(profile.id)} className="ml-auto p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Color aleatorio">
+                                                <DiceIcon className="w-4 h-4" />
+                                              </button>
+                                            </div>
+                                            <div className="flex items-center gap-2 p-1.5 bg-white border border-panel-border rounded-md">
+                                              <button onClick={() => {
+                                                onSelectedCharIdChange(profile.id);
+                                                onCharacterEditorTabChange('appearance');
+                                                togglePanel('CharacterEditor');
+                                              }} className="flex-grow text-left font-semibold text-condorito-brown hover:text-condorito-red transition-colors">
+                                                Apariencia
+                                              </button>
+                                              <button onClick={() => handleRandomizeCharacterAppearance(profile.id)} className="p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Apariencia aleatoria">
+                                                <DiceIcon className="w-4 h-4" />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                 </div>
                               ) : (
                                 <p className="text-center text-xs text-condorito-brown select-none p-4">

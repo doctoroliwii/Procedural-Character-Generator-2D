@@ -17,30 +17,44 @@ const getClosestPointOnRect = (point: {x: number, y: number}, rect: {x: number, 
     return { x: closestX, y: closestY };
 };
 
-const createBubblePathWithTail = (bubbleRect: {x: number, y: number, width: number, height: number}, initialTailTip: {x: number, y: number}): string => {
+const createBubblePathWithTail = (
+    bubbleRect: {x: number, y: number, width: number, height: number}, 
+    initialTailTip: {x: number, y: number}
+): string => {
     const { x, y, width, height } = bubbleRect;
     
-    // Failsafe: if the tail tip is inside the bubble, move it to the nearest edge to prevent inversion.
+    // Failsafe: if the tail tip is inside the bubble, move it to the nearest edge
     let tailTip = { ...initialTailTip };
     if (tailTip.x > x && tailTip.x < x + width && tailTip.y > y && tailTip.y < y + height) {
         tailTip = getClosestPointOnRect(tailTip, bubbleRect);
     }
     
-    const r = 15;
+    const r = 15; // Border radius
     const tailBaseWidth = 20;
 
-    const dx = tailTip.x - (x + width / 2);
-    const dy = tailTip.y - (y + height / 2);
+    // Calculate center of bubble
+    const bubbleCenterX = x + width / 2;
+    const bubbleCenterY = y + height / 2;
     
-    let edge = 'bottom';
+    // Calculate distances to each edge
+    const distToTop = Math.abs(tailTip.y - y);
+    const distToBottom = Math.abs(tailTip.y - (y + height));
+    const distToLeft = Math.abs(tailTip.x - x);
+    const distToRight = Math.abs(tailTip.x - (x + width));
     
-    const horizontalDist = Math.max(0, Math.abs(dx) - width / 2);
-    const verticalDist = Math.max(0, Math.abs(dy) - height / 2);
-
-    if (horizontalDist > verticalDist) {
-        edge = dx > 0 ? 'right' : 'left';
+    // Find the closest edge
+    const minDist = Math.min(distToTop, distToBottom, distToLeft, distToRight);
+    
+    let edge: 'top' | 'bottom' | 'left' | 'right';
+    
+    if (minDist === distToBottom) {
+        edge = 'bottom';
+    } else if (minDist === distToTop) {
+        edge = 'top';
+    } else if (minDist === distToLeft) {
+        edge = 'left';
     } else {
-        edge = dy > 0 ? 'bottom' : 'top';
+        edge = 'right';
     }
     
     let tailP1: {x: number, y: number}, tailP2: {x: number, y: number};
@@ -69,6 +83,7 @@ const createBubblePathWithTail = (bubbleRect: {x: number, y: number, width: numb
             break;
     }
 
+    // Build the path with rounded corners
     let path = `M ${x + r},${y}`;
     if (edge === 'top') path += ` L ${tailP2.x},${y} L ${tailTip.x},${tailTip.y} L ${tailP1.x},${y}`;
     path += ` L ${x + width - r},${y}`;
@@ -85,6 +100,7 @@ const createBubblePathWithTail = (bubbleRect: {x: number, y: number, width: numb
     
     return path;
 };
+
 
 const calculateLocalFootY = (params: CharacterParams): number => {
     const { headWidth, headHeight, headShape, neckHeight, torsoHeight, torsoWidth, torsoShape, torsoCornerRadius, pelvisHeight, pelvisWidthRatio, lLegWidth, rLegWidth, legLength, lLegAngle, rLegAngle } = params;
@@ -201,9 +217,9 @@ const calculatePanelTransform = (panel: ComicPanelData, pW: number, pH: number) 
     }
 
     // --- NEW COMPOSITION LOGIC ---
-    // Reserve top 33% of the panel for dialogue bubbles.
-    const characterAreaY = pH * 0.33;
-    const characterAreaHeight = pH * 0.67;
+    // Reserve top 25% of the panel for dialogue bubbles.
+    const characterAreaY = pH * 0.25; // Reducir a 25% para dar más espacio a personajes
+    const characterAreaHeight = pH * 0.75;
     const characterAreaWidth = pW;
 
     // Add padding to the content
@@ -294,7 +310,8 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
       const headCenterX = speakerHeadBounds.x + speakerHeadBounds.width / 2;
       const headTopY = speakerHeadBounds.y;
 
-      const yPos = headTopY - height / 2 - 25;
+      // Posicionar el bocadillo arriba de la cabeza del personaje
+      const yPos = headTopY - height - 30; // 30px de margen
       
       const totalCharsInPanel = panel.characters.length;
       let horizontalOffset = 0;
@@ -383,7 +400,7 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
     return bubbles.map(bubble => {
       const tailTip = {
           x: bubble.speakerHeadBounds.x + bubble.speakerHeadBounds.width / 2,
-          y: bubble.speakerHeadBounds.y + bubble.speakerHeadBounds.height * 0.75,
+          y: bubble.speakerHeadBounds.y + bubble.speakerHeadBounds.height * 0.85, // Más cerca de la parte inferior (boca)
       };
       const bubblePath = createBubblePathWithTail(bubble, tailTip);
 

@@ -172,6 +172,33 @@ export const getTrendsForCountry = async (countryName: string): Promise<string[]
   }
 };
 
+export const generateCharacterName = async (genre: string, language: string): Promise<string> => {
+  const languageMap: Record<string, string> = {
+    es: 'español',
+    en: 'inglés',
+    ja: 'japonés',
+    zh: 'chino',
+    ru: 'ruso',
+    hi: 'hindi',
+  };
+  const languageName = languageMap[language] || 'español';
+
+  const prompt = `Suggest a single, creative, and funny character name for a story with the theme: "${genre}".
+  The name should be in ${languageName}.
+  Respond ONLY with the name itself, nothing else. For example: "Pepito Risitas" or "Capitán Calamidad".`;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+    return response.text.trim().replace(/^"|"$/g, '');
+  } catch (error) {
+    console.error("Error generating character name:", error);
+    throw error;
+  }
+};
+
 
 // --- NEW NARRATIVE GENERATION SERVICES ---
 
