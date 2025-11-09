@@ -25,7 +25,7 @@ interface CharacterCanvasProps {
 }
 
 
-const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, viewBox, onViewBoxChange, currentPage, totalPages, onNextPage, onPrevPage, panMode = 'direct' }, ref) => {
+const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, viewBox, onViewBoxChange, currentPage, totalPages, onNextPage, onPrevPage, panMode = 'direct' }, ref) => {
   const VIEWBOX_WIDTH_BASE = 400;
   const VIEWBOX_HEIGHT = 700;
   
@@ -43,7 +43,7 @@ const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProp
     : VIEWBOX_WIDTH_BASE;
   
   useImperativeHandle(ref, () => ({
-    export: () => {
+    export: (pageNumber?: number) => {
       if (!svgRef.current || !isComicMode) {
         alert("No comic available to export.");
         return;
@@ -70,56 +70,51 @@ const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProp
         if (ctx) {
            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
            
-           // --- Add Logo and Date ---
-           const today = new Date();
-           const dd = String(today.getDate()).padStart(2, '0');
-           const mm = String(today.getMonth() + 1).padStart(2, '0'); // January is 0!
-           const yyyy = today.getFullYear();
-           const dateStr = `${dd}-${mm}-${yyyy}`;
-           
-           const logoText = "Plop!";
-           const fullText = `${logoText} ${dateStr}`;
-           
-           const fontSize = Math.round(canvas.width * 0.015);
-           const margin = canvas.width * 0.01;
-           
-           ctx.textAlign = 'right';
-           ctx.textBaseline = 'bottom';
-           
-           // Date text
-           ctx.font = `normal ${fontSize}px sans-serif`;
-           ctx.fillStyle = '#4A2E2C'; // condorito-brown
-           ctx.fillText(dateStr, canvas.width - margin, canvas.height - margin);
-           
-           const dateWidth = ctx.measureText(dateStr).width;
-           const spaceWidth = ctx.measureText(" ").width;
-           
-           // Logo text
-           ctx.font = `bold ${fontSize}px sans-serif`;
-           
-           const logoX = canvas.width - margin - dateWidth - spaceWidth;
-           const logoY = canvas.height - margin;
-           
-           // Outline
-           ctx.strokeStyle = '#4A2E2C'; // condorito-brown
-           ctx.lineWidth = fontSize * 0.2; // Outline thickness
-           ctx.strokeText(logoText, logoX, logoY);
+           // --- Add Plop! Logo to last panel ---
+           if (comicPanels && comicPanels.length > 0) {
+               const lastPanel = comicPanels[comicPanels.length - 1];
+               const lastPanelLayout = lastPanel.layout;
+               
+               const panelX = (lastPanelLayout.x / 100) * canvas.width;
+               const panelY = (lastPanelLayout.y / 100) * canvas.height;
+               const panelWidth = (lastPanelLayout.width / 100) * canvas.width;
+               const panelHeight = (lastPanelLayout.height / 100) * canvas.height;
 
-           // Fill
-           ctx.fillStyle = '#D84949'; // condorito-red
-           ctx.fillText(logoText, logoX, logoY);
-           // --- End Logo and Date ---
+               const logoText = "Plop!";
+               const logoFontSize = Math.round(panelHeight * 0.12);
+               const logoMargin = panelWidth * 0.05;
 
+               ctx.font = `bold ${logoFontSize}px 'Luckiest Guy', sans-serif`;
+               ctx.textAlign = 'right';
+               ctx.textBaseline = 'bottom';
+               
+               const logoX = panelX + panelWidth - logoMargin;
+               const logoY = panelY + panelHeight - logoMargin;
+               
+               // White outline for better visibility
+               ctx.strokeStyle = '#FFFFFF';
+               ctx.lineWidth = logoFontSize * 0.25;
+               ctx.strokeText(logoText, logoX, logoY);
+               
+               // Red Fill
+               ctx.fillStyle = '#D84949'; // condorito-red
+               ctx.fillText(logoText, logoX, logoY);
+           }
+           
            const pngUrl = canvas.toDataURL("image/png");
 
            // --- Generate Filename ---
+           const today = new Date();
+           const dateStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+           
            const sanitizedTheme = comicTheme
              .trim()
              .replace(/\s+/g, '-') 
              .replace(/[^a-zA-Z0-9-]/g, '')
              .toLowerCase() || 'comic';
-
-           const filename = `${sanitizedTheme}-plop-${dateStr}.png`;
+            
+           const pageString = pageNumber ? `-pagina-${pageNumber}` : '';
+           const filename = `${sanitizedTheme}-plop${pageString}-${dateStr}.png`;
            
            // Trigger download
            const a = document.createElement("a");
@@ -227,8 +222,23 @@ const CharacterCanvas = forwardRef<({ export: () => void }), CharacterCanvasProp
   };
   
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => { if (e.code === 'Space') { setIsSpacePressed(true); e.preventDefault(); } };
-    const handleKeyUp = (e: KeyboardEvent) => { if (e.code === 'Space') { setIsSpacePressed(false); } };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        const activeEl = document.activeElement;
+        // If the user is typing in a text field, let them type a space.
+        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+          return;
+        }
+        // Otherwise, enable canvas panning.
+        setIsSpacePressed(true);
+        e.preventDefault();
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      }
+    };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {

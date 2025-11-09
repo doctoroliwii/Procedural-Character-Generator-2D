@@ -1,5 +1,5 @@
 import React from 'react';
-import { CompulsivoLogo } from './icons';
+import { COMPULSIVO_LOGO_BASE64 } from './icons';
 
 interface WelcomeModalProps {
     onNewCharacter: () => void;
@@ -41,7 +41,7 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ onNewCharacter, onNewComic,
                     </button>
                 </div>
                 <div className="mt-10 text-center">
-                    <CompulsivoLogo className="w-24 h-auto mx-auto text-condorito-wood" />
+                    <img src={COMPULSIVO_LOGO_BASE64} alt="Compulsivo Studio Logo" className="w-24 h-auto mx-auto" />
                     <p className="text-xs text-condorito-brown mt-2">A Compulsivo Studio Creation - 2025</p>
                 </div>
             </div>

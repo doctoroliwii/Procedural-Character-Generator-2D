@@ -13,7 +13,7 @@ interface MenuBarProps {
   onMenuItemClick: (key: PanelKey) => void;
   handleImport: (type: 'lore' | 'characters' | 'story') => void;
   handleExport: (type: 'lore' | 'characters' | 'story') => void;
-  onExportComic: () => void;
+  onExportComic: (mode: 'current' | 'batch') => void;
 }
 
 const MenuBar: React.FC<MenuBarProps> = ({ onNewCharacter, onNewComic, onNewUniverse, onNewProject, onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport, onExportComic }) => {
@@ -41,7 +41,13 @@ const MenuBar: React.FC<MenuBarProps> = ({ onNewCharacter, onNewComic, onNewUniv
         { label: 'Historia', action: () => handleExport('story') },
       ]
     },
-    { label: 'Exportar Cómic', action: onExportComic },
+    {
+      label: 'Exportar Cómic',
+      subItems: [
+        { label: 'Exportar Página Actual', action: () => onExportComic('current') },
+        { label: 'Exportar Todas las Páginas', action: () => onExportComic('batch') },
+      ]
+    },
   ];
   
   const actionsItems = [

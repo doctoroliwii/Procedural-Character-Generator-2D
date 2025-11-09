@@ -6,6 +6,8 @@ import type { Lore, CharacterProfile, Story, Location, RichText } from '../types
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 const richTextToString = (value: RichText | undefined): string => value?.map(s => s.text).join('') || '';
+// S-Fix: Add stringToRichText function
+const stringToRichText = (text: string, source: 'user' | 'ai'): RichText => [{ text, source }];
 
 // FIX: Moved parseJsonResponse to the top to be accessible by all functions and standardized JSON parsing.
 const parseJsonResponse = (jsonText: string) => {
@@ -84,7 +86,7 @@ export interface ComicScript {
   panels: PanelScript[];
 }
 
-export const generateComicScript = async (theme: string, numPanels: number, language: string, numCharacters?: number, scene?: string): Promise<ComicScript> => {
+export const generateComicScript = async (theme: string, numPanels: number, language: string, numCharacters?: number, scene?: string, isSequential: boolean = false): Promise<ComicScript> => {
   const languageMap: Record<string, string> = {
     es: 'español',
     en: 'inglés',
@@ -101,7 +103,14 @@ export const generateComicScript = async (theme: string, numPanels: number, lang
 
   const sceneInstruction = scene ? `Toda la historia debe transcurrir en la siguiente escena: "${scene}". Mantén la coherencia visual del fondo en todas las viñetas.` : '';
 
-  const prompt = `Crea un guion de cómic corto de ${numPanels} viñetas en ${languageName} basado en el tema: "${theme}".
+  const storyInstruction = isSequential
+    ? `Crea un guion para una HISTORIA DE CÓMIC SECUENCIAL en ${languageName} de ${numPanels} viñetas en total. La historia debe tener un principio, un desarrollo y un final claros, y debe ser una trama continua a lo largo de todas las viñetas.`
+    : `Crea un guion de cómic corto de ${numPanels} viñetas en ${languageName}.`;
+
+  const themeInstruction = `La historia debe basarse en el siguiente tema: "${theme}".`;
+
+  const prompt = `${storyInstruction}
+  ${themeInstruction}
   ${characterConstraint}
   ${sceneInstruction}
   El guion debe ser coherente, con personajes consistentes a lo largo de las viñetas.
@@ -354,11 +363,40 @@ export const generateFullCharacterProfile = async (
     });
 
     const result = parseJsonResponse(response.text);
-    // The Gemini API may incorrectly return a plain string for `name` instead of an object.
-    // This ensures that the structure matches the expected `Omit<CharacterProfile, '...'>` type.
+    
+    // The API returns string fields. We need to convert them to RichText to match the return type
+    // and fall back to existing data if the API doesn't return a value for a field.
+    const toRichText = (value: unknown): RichText | undefined => {
+      if (typeof value === 'string' && value.trim()) {
+        return stringToRichText(value, 'ai');
+      }
+      return undefined;
+    };
+
+    const psychology = result.psychology || {};
+    const backstory = result.backstory || {};
+    
     return {
-      ...result,
-      name: result.name || partialProfile.name, // Fallback to existing name
+        name: toRichText(result.name) || partialProfile.name,
+        age: toRichText(result.age) || partialProfile.age,
+        species: toRichText(result.species) || partialProfile.species,
+        occupation: toRichText(result.occupation) || partialProfile.occupation,
+        originLocationId: result.originLocationId || partialProfile.originLocationId,
+        skills: toRichText(result.skills) || partialProfile.skills,
+        limitations: toRichText(result.limitations) || partialProfile.limitations,
+        psychology: {
+            motivation: toRichText(psychology.motivation) || partialProfile.psychology.motivation,
+            fear: toRichText(psychology.fear) || partialProfile.psychology.fear,
+            virtues: toRichText(psychology.virtues) || partialProfile.psychology.virtues,
+            flaws: toRichText(psychology.flaws) || partialProfile.psychology.flaws,
+            archetype: toRichText(psychology.archetype) || partialProfile.psychology.archetype,
+        },
+        backstory: {
+            origin: toRichText(backstory.origin) || partialProfile.backstory.origin,
+            wound: toRichText(backstory.wound) || partialProfile.backstory.wound,
+            journey: toRichText(backstory.journey) || partialProfile.backstory.journey,
+            initialState: toRichText(backstory.initialState) || partialProfile.backstory.initialState,
+        },
     };
 };
 
@@ -580,13 +618,36 @@ export const generateLocationImage = async (name: string, description: string, g
 };
 
 export const generatePanelBackground = async (description: string): Promise<string> => {
-    const prompt = `Generate a comic book background that accurately reflects this scene description: "${description}".
+    const prompt = `Eres un compositor visual experto en arte secuencial. Tu tarea es generar un fondo de cómic para un plano general donde los personajes deben integrarse visualmente a escala humana dentro de la escena.
+El fondo será usado por un sistema que superpone personajes en el 75 % inferior de la viñeta, dejando el 25 % superior para bocadillos de diálogo.
 
-**CRITICAL INSTRUCTIONS:**
-1.  **THEME AND CONTEXT ARE KEY:** The generated background MUST match the theme and context provided in the scene description. For example, if the description mentions a city street, draw a city street, not a fantasy landscape.
-2.  **IGNORE CHARACTERS:** The description might mention characters (e.g., "a robot," "a hero"). You MUST ignore them. Your task is to create ONLY the environment. Do NOT draw any people, creatures, robots, animals, silhouettes, or figures.
-3.  **ART STYLE:** The style must be a simple, modern cartoon aesthetic. Use vibrant and colorful flat colors with bold, clean black outlines. Avoid photorealism, gradients, and complex textures.
-4.  **NO TEXT:** The image must be completely free of any text, logos, or user interface elements.`;
+**DESCRIPCIÓN DE LA ESCENA:** "${description}"
+
+**🧩 Instrucciones de composición (plano general)**
+
+**Estructura de imagen (zonas):**
+- **25 % superior:** Cielo, nubes o cimas lejanas de montañas. Sin elementos importantes ni horizonte.
+- **75 % inferior:** Zona de acción y personajes. La línea del suelo debe ubicarse en el tercio inferior exacto de toda la imagen.
+- **Horizonte:** Coloca el horizonte entre 1/3 y 2/5 de la altura total, siguiendo la ley de tercios y la sección áurea (φ ≈ 0.618). Esto crea un equilibrio visual natural.
+
+**Escala y perspectiva humana:**
+- Imagina que los personajes medirán entre 1,6 y 1,8 m y ocuparán aproximadamente la mitad del alto del área de acción (75 %).
+- Los objetos del entorno (bancos, árboles, senderos, autos, postes) deben dimensionarse coherentemente con esa escala.
+- El punto de fuga principal debe estar a la altura de los ojos humanos, ligeramente por debajo del centro vertical.
+
+**Reglas de composición avanzadas:**
+- **Ley de tercios:** los elementos clave (bancos, caminos, árboles principales) deben alinearse con las líneas o intersecciones de los tercios.
+- **Guía Visual:** Si usas curvas o diagonales, que sigan la espiral dorada para guiar la mirada hacia el centro donde estarán los personajes.
+- Mantén la dirección del recorrido visual desde el primer plano (abajo) hacia el fondo.
+
+**Estilo visual:**
+- Estilo dibujo animado moderno, colores planos, contornos negros limpios.
+- Perspectiva coherente y sin distorsión angular.
+- Evita cualquier sombra o profundidad exagerada que distraiga.
+- **Importante:** No incluyas figuras humanas, animales ni siluetas.
+
+**Compatibilidad con planos cerrados:**
+- Asegúrate de que el fondo pueda reencuadrarse (crop y zoom central superior) sin perder coherencia visual. Esto permite generar primeros planos aplicando un zoom y blur suave sobre la parte superior central de la imagen.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -613,10 +674,16 @@ export const generatePanelBackground = async (description: string): Promise<stri
 };
 
 export const generateVariantPanelBackground = async (baseImageB64: string, description: string): Promise<string> => {
-    const prompt = `Using the provided image as a reference for the location and art style, generate a new background that matches this scene description: "${description}".
+    const prompt = `Usando la imagen proporcionada como referencia ESTRICTA para el estilo artístico y la ubicación, genera un nuevo fondo de cómic que se ajuste a esta nueva descripción de escena: "${description}".
 
-The new image must maintain the same simple, modern cartoon aesthetic with bold black outlines.
-CRUCIAL: DO NOT draw any characters, people, creatures, or figures. Only generate the environment.`;
+**REGLAS CRÍTICAS (OBLIGATORIAS):**
+
+1.  **MANTENER ESTILO:** El estilo (colores planos, contornos negros definidos) debe ser idéntico al de la imagen de referencia.
+2.  **NO INCLUIR PERSONAJES:** No dibujes personas, criaturas, siluetas o figuras. El escenario debe estar vacío.
+3.  **RESPETAR COMPOSICIÓN AVANZADA:** Sigue las mismas reglas de composición que la imagen original. La acción principal, los objetos clave y la línea del suelo deben permanecer en el 75% inferior de la imagen. El 25% superior debe estar despejado (cielo, etc.) para los diálogos. El horizonte debe estar bajo (tercio inferior de la imagen).
+4.  **ESCALA COHERENTE:** Asegúrate de que los nuevos elementos en la escena mantengan la misma escala y perspectiva que la imagen de referencia, para que los personajes se integren correctamente.
+
+El objetivo es crear una variación de la escena que se sienta como si estuviera en el mismo lugar y momento, pero con un ángulo o enfoque ligeramente diferente según la descripción.`;
 
     try {
         const response = await ai.models.generateContent({

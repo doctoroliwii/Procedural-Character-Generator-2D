@@ -7,7 +7,7 @@ import MenuBar from './components/MenuBar';
 import WelcomeModal from './components/WelcomeModal';
 import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, ComicScript, generatePanelBackground, generateFullCharacterProfile, generateCharacterName, generateSceneDescription, generateVariantPanelBackground } from './services/geminiService';
 import { CloseIcon, WarningIcon } from './components/icons';
-import { generateRandomParams } from './services/characterGenerationService';
+import { generateRandomParams, generateRandomAppearanceParams } from './services/characterGenerationService';
 import StatusBar from './components/StatusBar';
 import NavigatorPanel from './components/NavigatorPanel';
 
@@ -45,43 +45,6 @@ const CHARACTER_HEADERS: (keyof CharacterProfile)[] = [
 const RICH_TEXT_CHARACTER_FIELDS: (keyof CharacterProfile)[] = ['name', 'age', 'species', 'occupation', 'skills', 'limitations'];
 const RICH_TEXT_LORE_FIELDS: (keyof Lore)[] = ['genre', 'rules', 'history'];
 const RICH_TEXT_STORY_FIELDS: (keyof Story)[] = ['genre', 'stakes'];
-
-function dataToCsv(data: any, type: CsvDataType): string {
-  if (!data) return '';
-  
-  let headers: string[] = [];
-  let rowsData: any[] = [];
-
-  switch(type) {
-    case 'lore':
-      if (data) {
-        headers = LORE_HEADERS;
-        rowsData = [data];
-      }
-      break;
-    case 'story':
-      if (data) {
-        headers = STORY_HEADERS;
-        rowsData = [data];
-      }
-      break;
-    case 'characters':
-      if (Array.isArray(data) && data.length > 0) {
-        headers = CHARACTER_HEADERS;
-        rowsData = data;
-      }
-      break;
-  }
-  
-  if (headers.length === 0) return '';
-  
-  const headerRow = headers.join(',');
-  const rows = rowsData.map(row => {
-    return headers.map(header => safeStringify(row[header])).join(',');
-  });
-  
-  return [headerRow, ...rows].join('\n');
-}
 
 function csvToData(csvString: string, type: CsvDataType): any {
     const lines = csvString.trim().replace(/\r\n/g, '\n').split('\n');
@@ -165,6 +128,39 @@ function csvToData(csvString: string, type: CsvDataType): any {
     }
     return data;
 }
+
+// FIX: Added the missing dataToCsv function to handle exporting narrative data.
+function dataToCsv(data: any, type: CsvDataType): string {
+    let headers: string[];
+    let dataArray: any[];
+
+    switch(type) {
+        case 'lore':
+            headers = LORE_HEADERS as string[];
+            dataArray = [data];
+            break;
+        case 'story':
+            headers = STORY_HEADERS as string[];
+            dataArray = [data];
+            break;
+        case 'characters':
+            headers = CHARACTER_HEADERS as string[];
+            dataArray = data;
+            break;
+        default:
+            throw new Error(`Invalid CSV data type: ${type}`);
+    }
+
+    const headerRow = headers.join(',');
+    const dataRows = dataArray.map(obj => {
+        return headers.map(header => {
+            const value = obj[header as keyof typeof obj];
+            return safeStringify(value);
+        }).join(',');
+    });
+
+    return [headerRow, ...dataRows].join('\n');
+}
 // --- CSV UTILS --- END
 
 
@@ -181,6 +177,7 @@ function App() {
   const [comicTheme, setComicTheme] = useState('Típico chiste chileno');
   const [comicScene, setComicScene] = useState('Dos amigos conversando en un parque con la cordillera de los Andes de fondo');
   const [numComicPanels, setNumComicPanels] = useState(4);
+  const [numComicPages, setNumComicPages] = useState(1);
   
   // Shared Comic state
   const [comicPanels, setComicPanels] = useState<ComicPanelData[] | null>(null);
@@ -207,8 +204,9 @@ function App() {
   // Project State
   const [project, setProject] = useState<Project | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
   
-  const comicCanvasRef = useRef<{ export: () => void }>(null);
+  const comicCanvasRef = useRef<{ export: (pageNumber?: number) => void }>(null);
 
 
   const [panels, setPanels] = useState<Record<PanelKey, PanelState>>({
@@ -540,15 +538,17 @@ function App() {
   const handleGenerateComic = useCallback(async (mode: 'simple' | 'custom', options?: { theme?: string; panels?: number; language?: string; }, customData?: { lore: Lore, story: Story, characterProfiles: CharacterProfile[] }) => {
     setIsGeneratingComic(true);
     setApiError(null);
-    setComicPanels([]);
+    setComicPanels(null);
     setProject(null);
     
     try {
-      let script: ComicScript;
-      let characterParamsList: CharacterParams[];
       const sceneToUse = comicScene;
       
       if (mode === 'simple') {
+        const themeToUse = options?.theme ?? comicTheme;
+        const panelsPerPage = options?.panels ?? numComicPanels;
+        const languageToUse = options?.language ?? comicLanguage;
+
         let profilesToUse: CharacterProfile[];
         if (characterProfiles.length > 0) {
             profilesToUse = characterProfiles;
@@ -582,12 +582,71 @@ function App() {
                 return newProfiles;
             })();
         }
+        const characterParamsList = profilesToUse.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
+        
+        const pages: ComicPanelData[][] = [];
 
-        const themeToUse = options?.theme ?? comicTheme;
-        const panelsToUse = options?.panels ?? numComicPanels;
-        const languageToUse = options?.language ?? comicLanguage;
-        script = await generateComicScript(themeToUse, panelsToUse, languageToUse, profilesToUse.length, sceneToUse);
-        characterParamsList = profilesToUse.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
+        const isMultiPageStory = numComicPages > 1;
+        const totalPanels = isMultiPageStory ? numComicPages * panelsPerPage : panelsPerPage;
+
+        const script = await generateComicScript(
+            themeToUse,
+            totalPanels,
+            languageToUse,
+            profilesToUse.length,
+            sceneToUse,
+            isMultiPageStory
+        );
+
+        if (script && script.panels && script.panels.length > 0) {
+            if (isMultiPageStory) {
+                const batchSize = 5; // Process 5 pages in parallel at a time
+                for (let i = 0; i < numComicPages; i += batchSize) {
+                    const pagePromises: Promise<ComicPanelData[]>[] = [];
+                    const end = Math.min(i + batchSize, numComicPages);
+                    for (let j = i; j < end; j++) {
+                        const pagePanelsData = script.panels.slice(j * panelsPerPage, (j + 1) * panelsPerPage);
+                        if (pagePanelsData.length > 0) {
+                            const pageScript: ComicScript = {
+                                ...script,
+                                panels: pagePanelsData,
+                            };
+                            pagePromises.push(processComicScript(pageScript, characterParamsList));
+                        }
+                    }
+                    if (pagePromises.length > 0) {
+                      const resolvedPages = await Promise.all(pagePromises);
+                      pages.push(...resolvedPages);
+                    }
+                }
+            } else {
+                const newPanels = await processComicScript(script, characterParamsList);
+                pages.push(newPanels);
+            }
+        } else {
+            console.warn(`Generated an empty or invalid script. Skipping comic generation.`);
+        }
+
+        if (pages.length === 0) {
+          throw new Error("Failed to generate any comic pages from the script.");
+        }
+
+        if (pages.length > 1) {
+            const newProject: Project = {
+                name: stringToRichText(themeToUse),
+                genre: stringToRichText("Cómic"),
+                seasons: 1,
+                episodes: pages.length,
+                lore: null,
+                characterProfiles: profilesToUse,
+                comicPages: pages
+            };
+            setProject(newProject);
+            setCurrentPageIndex(0);
+            setComicPanels(pages[0] || []);
+        } else {
+            setComicPanels(pages[0] || []);
+        }
 
       } else { // Custom Mode
         const loreToUse = customData?.lore ?? lore;
@@ -597,7 +656,7 @@ function App() {
         if (!storyToUse || !loreToUse || profilesToUse.length === 0) {
           throw new Error("Please define Lore, Characters, and a Story in the Narrative Editor first.");
         }
-        script = await generateComicScriptFromStory(storyToUse, loreToUse, profilesToUse, numComicPanels, comicLanguage, sceneToUse);
+        const script = await generateComicScriptFromStory(storyToUse, loreToUse, profilesToUse, numComicPanels, comicLanguage, sceneToUse);
 
         if (!customData) { // Only update profiles if not using custom one-off data
           const updatedProfiles = profilesToUse.map(p => {
@@ -613,13 +672,13 @@ function App() {
           setCharacterProfiles(updatedProfiles);
         }
         
-        characterParamsList = storyToUse.characterProfileIds.map(id => profilesToUse.find(p => p.id === id)?.characterParams).filter(Boolean) as CharacterParams[];
+        const characterParamsList = storyToUse.characterProfileIds.map(id => profilesToUse.find(p => p.id === id)?.characterParams).filter(Boolean) as CharacterParams[];
+        
+        // FIX: Replaced incorrect boolean/number comparison with a simple check for an empty array.
+        if (!script || !script.panels || script.panels.length === 0) throw new Error("Received an empty or invalid script from the API.");
+        const newPanels = await processComicScript(script, characterParamsList);
+        setComicPanels(newPanels);
       }
-      
-      if (!script || !script.panels || script.panels.length === 0) throw new Error("Received an empty or invalid script from the API.");
-      const newPanels = await processComicScript(script, characterParamsList);
-      setComicPanels(newPanels);
-
     } catch (error: any) {
       console.error("Failed to generate comic", error);
       const errorMessage = error.message || String(error);
@@ -631,7 +690,7 @@ function App() {
     } finally {
       setIsGeneratingComic(false);
     }
-  }, [comicTheme, numComicPanels, comicLanguage, comicScene, story, lore, characterProfiles, processComicScript]);
+  }, [comicTheme, numComicPanels, comicLanguage, comicScene, story, lore, characterProfiles, processComicScript, numComicPages]);
   
   const handleRandomizeComic = useCallback(async () => {
     setApiError(null);
@@ -817,6 +876,63 @@ function App() {
     }
   }, [comicTheme, comicLanguage, characterProfiles]);
 
+  const handleRandomizeCharacterAppearance = useCallback((characterId: string) => {
+    const profile = characterProfiles.find(p => p.id === characterId);
+    if (!profile) return;
+
+    let numericCharId: number | undefined = undefined;
+    if (comicMode === 'simple') {
+        numericCharId = characterProfiles.findIndex(p => p.id === characterId);
+    } else if (story) {
+        numericCharId = story.characterProfileIds.indexOf(characterId);
+    }
+
+    if (numericCharId === -1) {
+        numericCharId = undefined;
+    }
+
+    const newBaseParams = generateRandomAppearanceParams(profile.characterParams);
+  
+    setCharacterProfiles(prev => prev.map(p => 
+      p.id === characterId ? { ...p, characterParams: newBaseParams } : p
+    ));
+
+    if (comicPanels && numericCharId !== undefined) {
+        const charIdToUpdate = numericCharId;
+        setComicPanels(prevPanels => {
+            if (!prevPanels) return null;
+            return prevPanels.map(panel => {
+                if (!panel.characterIdsInPanel.includes(charIdToUpdate)) {
+                    return panel;
+                }
+
+                const newPanelCharacters = panel.characters.map((charInstance, index) => {
+                    if (panel.characterIdsInPanel[index] === charIdToUpdate) {
+                        const oldParams = charInstance.params;
+                        const poseKeys: ReadonlyArray<keyof CharacterParams> = [
+                            'lArmAngle', 'rArmAngle', 'lArmBend', 'rArmBend', 'lLegAngle', 'rLegAngle', 
+                            'lLegBend', 'rLegBend', 'mouthBend', 'eyebrowAngle', 'upperEyelidCoverage', 
+                            'lowerEyelidCoverage', 'viewAngle'
+                        ];
+                        
+                        const finalParams: CharacterParams = { ...newBaseParams };
+                        poseKeys.forEach(key => {
+                            if (key in oldParams) {
+                                (finalParams as any)[key] = (oldParams as any)[key];
+                            }
+                        });
+
+                        return { ...charInstance, params: finalParams };
+                    }
+                    return charInstance;
+                });
+
+                return { ...panel, characters: newPanelCharacters };
+            });
+        });
+    }
+  }, [characterProfiles, comicPanels, comicMode, story]);
+
   const handleGenerateAllAndComic = useCallback(async () => {
     setIsGeneratingComic(true);
     setApiError(null);
@@ -842,21 +958,14 @@ function App() {
           backstory: { origin: emptyRichText(), wound: emptyRichText(), journey: emptyRichText(), initialState: emptyRichText() },
         };
         const narrativeResult = await generateFullCharacterProfile(partialProfile, newLore);
+        const randomParams = generateRandomParams();
+        randomParams.bodyOutlines = true;
+        randomParams.eyeOutlines = true;
+        randomParams.eyeTracking = false;
         const fullProfile: CharacterProfile = {
             ...partialProfile,
             ...narrativeResult,
-            // FIX: Cast result properties to string as the return type of generateFullCharacterProfile is incorrect.
-            // The API returns strings, but the type signature says RichText, causing a type mismatch.
-            name: stringToRichText(narrativeResult.name as unknown as string, 'ai'), age: stringToRichText(narrativeResult.age as unknown as string, 'ai'), species: stringToRichText(narrativeResult.species as unknown as string, 'ai'),
-            occupation: stringToRichText(narrativeResult.occupation as unknown as string, 'ai'), skills: stringToRichText(narrativeResult.skills as unknown as string, 'ai'), limitations: stringToRichText(narrativeResult.limitations as unknown as string, 'ai'),
-            psychology: {
-                motivation: stringToRichText(narrativeResult.psychology.motivation as unknown as string, 'ai'), fear: stringToRichText(narrativeResult.psychology.fear as unknown as string, 'ai'),
-                virtues: stringToRichText(narrativeResult.psychology.virtues as unknown as string, 'ai'), flaws: stringToRichText(narrativeResult.psychology.flaws as unknown as string, 'ai'), archetype: stringToRichText(narrativeResult.psychology.archetype as unknown as string, 'ai'),
-            },
-            backstory: {
-                origin: stringToRichText(narrativeResult.backstory.origin as unknown as string, 'ai'), wound: stringToRichText(narrativeResult.backstory.wound as unknown as string, 'ai'),
-                journey: stringToRichText(narrativeResult.backstory.journey as unknown as string, 'ai'), initialState: stringToRichText(narrativeResult.backstory.initialState as unknown as string, 'ai'),
-            }
+            characterParams: randomParams,
         };
         newProfiles.push(fullProfile);
       }
@@ -948,9 +1057,53 @@ function App() {
   }, [lore, characterProfiles, numComicPanels, comicLanguage, comicScene, processComicScript, openPanel, togglePanel]);
 
 
-  const handleExportComic = useCallback(() => {
-    comicCanvasRef.current?.export();
-  }, []);
+  const handleExportComic = useCallback(async (mode: 'current' | 'batch') => {
+    if (!comicCanvasRef.current) {
+        alert("El lienzo del cómic no está disponible.");
+        return;
+    }
+
+    const isProjectWithPages = project && project.comicPages.length > 0;
+
+    if (mode === 'current') {
+        if (!comicPanels || comicPanels.length === 0) {
+            alert("No hay ningún cómic visible para exportar.");
+            return;
+        }
+        comicCanvasRef.current.export(isProjectWithPages ? currentPageIndex + 1 : undefined);
+    } else if (mode === 'batch') {
+        if (!isProjectWithPages || project.comicPages.length <= 1) {
+            alert("Se necesita un proyecto con varias páginas para la exportación por lotes.");
+            return;
+        }
+
+        setIsExporting(true);
+        const originalPageIndex = currentPageIndex;
+        const originalPanels = comicPanels;
+
+        try {
+            for (let i = 0; i < project.comicPages.length; i++) {
+                // Update state to render the page we want to export
+                setCurrentPageIndex(i);
+                setComicPanels(project.comicPages[i]);
+                
+                // Wait for React to re-render the canvas with the new page
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                comicCanvasRef.current.export(i + 1);
+            }
+            alert("Exportación por lotes completada.");
+        } catch (error) {
+            console.error("Error during batch export:", error);
+            alert("Ocurrió un error durante la exportación por lotes.");
+        } finally {
+            // Restore the original view
+            setCurrentPageIndex(originalPageIndex);
+            setComicPanels(originalPanels);
+            setIsExporting(false);
+        }
+    }
+  }, [project, comicPanels, currentPageIndex]);
 
   useEffect(() => {
     const scale = uiScale / 100;
@@ -1049,7 +1202,18 @@ function App() {
             case 'characters':
               setCharacterProfiles(prev => {
                 const existingIds = new Set(prev.map(p => p.id));
-                const newChars = (importedData as CharacterProfile[]).filter(p => !existingIds.has(p.id));
+                let newChars = (importedData as CharacterProfile[]).filter(p => !existingIds.has(p.id));
+
+                // Ensure all imported characters have valid appearance data
+                newChars = newChars.map(char => {
+                  if (!char.characterParams || typeof char.characterParams !== 'object') {
+                    console.warn(`Character "${richTextToString(char.name)}" imported without appearance data. Assigning random appearance.`);
+                    const randomParams = generateRandomParams();
+                    return { ...char, characterParams: randomParams };
+                  }
+                  return char;
+                });
+                
                 if (newChars.length === 0) {
                     alert("No se encontraron personajes nuevos para importar (IDs ya existen).");
                     return prev;
@@ -1139,6 +1303,14 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-condorito-pink font-sans overflow-hidden">
+      {isExporting && (
+          <div className="absolute inset-0 z-[300] flex items-center justify-center bg-condorito-brown/60 backdrop-blur-sm">
+              <div className="bg-panel-back rounded-xl p-8 text-center border border-panel-header shadow-lg">
+                  <p className="font-bold text-condorito-red text-lg animate-pulse">Exportando páginas...</p>
+                  <p className="text-sm text-condorito-brown mt-2">Por favor, espere.</p>
+              </div>
+          </div>
+      )}
       {appState === 'welcome' && (
         <WelcomeModal 
           onNewCharacter={handleNewCharacter}
@@ -1223,6 +1395,8 @@ function App() {
           onAppendComicTheme={handleAppendComicTheme}
           numComicPanels={numComicPanels}
           onNumComicPanelsChange={setNumComicPanels}
+          numComicPages={numComicPages}
+          onNumComicPagesChange={setNumComicPages}
           comicAspectRatio={comicAspectRatio}
           onComicAspectRatioChange={setComicAspectRatio}
           minComicFontSize={minComicFontSize}
@@ -1254,6 +1428,7 @@ function App() {
           onGenerateSimpleCharacters={handleGenerateSimpleCharacters}
           isGeneratingSimpleCharacters={isGeneratingSimpleCharacters}
           onRegenerateCharacterName={handleRegenerateCharacterName}
+          onRandomizeCharacterAppearance={handleRandomizeCharacterAppearance}
           comicMode={comicMode}
           onComicModeChange={setComicMode}
           characterEditorTab={characterEditorTab}

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { CharacterInstance, CharacterParams } from '../types';
+import { PARAM_CONFIGS } from '../constants';
 
 // Helper to create a rounded polygon path
 function createRoundedPolygonPath(points: {x: number, y: number}[], radius: number): string {
@@ -88,6 +89,7 @@ const Character: React.FC<{
         const actualHeadTopY = (() => { switch (headShape) { case 'circle': case 'square': return headY - headWidth / 2; default: return headY - headHeight / 2; } })();
         // FIX: Defined calculatedEyebrowWidth, which was used without being declared.
         const calculatedEyeSize = headHeight * (eyeSizeRatio / 100); const calculatedPupilSize = calculatedEyeSize * (pupilSizeRatio / 100); const calculatedEyebrowHeight = calculatedEyeSize * (eyebrowHeightRatio / 100); const calculatedEyebrowWidth = headWidth * (eyebrowWidthRatio / 100);
+        const calculatedMouthWidth = headWidth * (mouthWidthRatio / 100);
         
         // --- Body ---
         const calculatedNeckWidth = headWidth * (neckWidthRatio / 100); let adjustedPelvisWidth = torsoWidth * (pelvisWidthRatio / 100);
@@ -161,8 +163,38 @@ const Character: React.FC<{
         const lArmWidthScaled = lArmWidth * (viewFactor > 0 ? farLimbScale : closeLimbScale); const rArmWidthScaled = rArmWidth * (viewFactor < 0 ? farLimbScale : closeLimbScale);
         const lLegWidthScaled = lLegWidth * (viewFactor > 0 ? farLimbScale : closeLimbScale); const rLegWidthScaled = rLegWidth * (viewFactor < 0 ? farLimbScale : closeLimbScale);
 
-        const { path: lArmPath, end: lWrist } = createLimbPath(lShoulder, armLength, lArmAngle, lArmBend, -1); const { path: rArmPath, end: rWrist } = createLimbPath(rShoulder, armLength, rArmAngle, rArmBend, 1); const { path: lLegPath, end: lAnkle } = createLimbPath(lHip, legLength, finalLLegAngle, lLegBend, -1); const { path: rLegPath, end: rAnkle } = createLimbPath(rHip, legLength, finalRLegAngle, rLegBend, 1);
-        const lFootGroundY = lAnkle.y + lLegWidthScaled / 2; const rFootGroundY = rAnkle.y + rLegWidthScaled / 2; const lFootHeight = Math.max(lFootSize, lLegWidthScaled); const rFootHeight = Math.max(rFootSize, rLegWidthScaled); const lFootWidth = Math.min(lFootSize * 2, lLegWidthScaled * 3); const rFootWidth = Math.min(rFootSize * 2, rLegWidthScaled * 3); const lHeelX = lAnkle.x; const lFootPath = `M ${lHeelX} ${lFootGroundY} L ${lHeelX - lFootWidth} ${lFootGroundY} A ${lFootWidth / 2} ${lFootHeight} 0 0 1 ${lHeelX} ${lFootGroundY} Z`; const rHeelX = rAnkle.x; const rFootPath = `M ${rHeelX} ${rFootGroundY} L ${rHeelX + rFootWidth} ${lFootGroundY} A ${rFootWidth / 2} ${rFootHeight} 0 0 0 ${rHeelX} ${lFootGroundY} Z`;
+        // --- Z-INDEXING & FORESHORTENING ---
+        const lArmIsBehind = lArmAngle > 90;
+        const rArmIsBehind = rArmAngle > 90;
+        
+        let lArmLengthFinal = armLength;
+        let rArmLengthFinal = armLength;
+        let lArmWidthFinal = lArmWidthScaled;
+        let rArmWidthFinal = rArmWidthScaled;
+        let lHandSizeFinal = lHandSize;
+        let rHandSizeFinal = rHandSize;
+        
+        const behindScaleFactor = 0.25; // Shrink by up to 25%
+
+        if (lArmIsBehind) {
+            const maxAngle = PARAM_CONFIGS.lArmAngle.max;
+            const behindRatio = (lArmAngle - 90) / (maxAngle - 90);
+            const scale = 1 - behindRatio * behindScaleFactor;
+            lArmLengthFinal *= scale;
+            lArmWidthFinal *= scale;
+            lHandSizeFinal *= scale;
+        }
+        if (rArmIsBehind) {
+            const maxAngle = PARAM_CONFIGS.rArmAngle.max;
+            const behindRatio = (rArmAngle - 90) / (maxAngle - 90);
+            const scale = 1 - behindRatio * behindScaleFactor;
+            rArmLengthFinal *= scale;
+            rArmWidthFinal *= scale;
+            rHandSizeFinal *= scale;
+        }
+
+
+        const { path: lArmPath, end: lWrist } = createLimbPath(lShoulder, lArmLengthFinal, lArmAngle, lArmBend, -1); const { path: rArmPath, end: rWrist } = createLimbPath(rShoulder, rArmLengthFinal, rArmAngle, rArmBend, 1); const { path: lLegPath, end: lAnkle } = createLimbPath(lHip, legLength, finalLLegAngle, lLegBend, -1); const { path: rLegPath, end: rAnkle } = createLimbPath(rHip, legLength, finalRLegAngle, rLegBend, 1); const lFootGroundY = lAnkle.y + lLegWidthScaled / 2; const rFootGroundY = rAnkle.y + rLegWidthScaled / 2; const lFootHeight = Math.max(lFootSize, lLegWidthScaled); const rFootHeight = Math.max(rFootSize, rLegWidthScaled); const lFootWidth = Math.min(lFootSize * 2, lLegWidthScaled * 3); const rFootWidth = Math.min(rFootSize * 2, rLegWidthScaled * 3); const lHeelX = lAnkle.x; const lFootPath = `M ${lHeelX} ${lFootGroundY} L ${lHeelX - lFootWidth} ${lFootGroundY} A ${lFootWidth / 2} ${lFootHeight} 0 0 1 ${lHeelX} ${lFootGroundY} Z`; const rHeelX = rAnkle.x; const rFootPath = `M ${rHeelX} ${rFootGroundY} L ${rHeelX + rFootWidth} ${lFootGroundY} A ${rFootWidth / 2} ${rFootHeight} 0 0 0 ${rHeelX} ${lFootGroundY} Z`;
         
         // --- Feature Creation for Z-Sorting ---
         const features: any[] = [];
@@ -254,9 +286,22 @@ const Character: React.FC<{
             features.push({ kind: 'eyelashes', id: 'rightEyelashes', eye: rightEye, z: rightEye.z + 0.02 });
         }
         
+        // The mouth's horizontal travel range is calculated to place it near the edge of the head at extreme angles,
+        // accounting for the foreshortening of the mouth's width. A small padding is used to prevent it from
+        // overlapping with the head's outline. This creates a more pronounced 3D effect.
+        const finalMouthWidthAt90 = calculatedMouthWidth * 0.2; // Mouth width at 90-degree profile
+        const mouthTravelRange = (headWidth / 2) - (finalMouthWidthAt90 / 2) - 4; // Max travel from center, with 4px padding
+        const mouthX = dynamicCenterX + viewFactor * mouthTravelRange;
         const mouthZNom = headWidth * 0.05;
-        const mouthProj = projectOnHead(viewFactor * headWidth * 0.25, mouthZNom);
-        features.push({ kind: 'mouth', id: 'mouth', ...mouthProj });
+        const mouthZDepth = mouthZNom * depthFactor;
+        
+        features.push({
+            kind: 'mouth',
+            id: 'mouth',
+            x: mouthX,
+            scale: 1,
+            z: mouthZDepth
+        });
 
         const noseZNom = headWidth * 0.45;
         const noseProj = projectOnHead(0, noseZNom);
@@ -278,6 +323,11 @@ const Character: React.FC<{
 
         const scaleX = charInstance.scale * (isFlipped ? -1 : 1);
         const scaleY = charInstance.scale;
+
+        const renderLeftArm = () => ( <> <path d={lArmPath} fill="none" stroke={bodyColor} strokeWidth={lArmWidthFinal} strokeLinecap="round" strokeLinejoin="round" /> <circle cx={lWrist.x} cy={lWrist.y} r={lHandSizeFinal/2} fill={bodyColor} /> </> );
+        const renderRightArm = () => ( <> <path d={rArmPath} fill="none" stroke={bodyColor} strokeWidth={rArmWidthFinal} strokeLinecap="round" strokeLinejoin="round" /> <circle cx={rWrist.x} cy={rWrist.y} r={rHandSizeFinal/2} fill={bodyColor} /> </> );
+        const renderLeftLeg = () => ( <> <path d={lFootPath} fill={bodyColor} /> <path d={lLegPath} fill="none" stroke={bodyColor} strokeWidth={lLegWidthScaled} strokeLinecap="round" strokeLinejoin="round" /> <circle cx={lHip.x} cy={lHip.y} r={lLegWidthScaled / 2 * 1.6} fill={bodyColor} /> </> );
+        const renderRightLeg = () => ( <> <path d={rFootPath} fill={bodyColor} /> <path d={rLegPath} fill="none" stroke={bodyColor} strokeWidth={rLegWidthScaled} strokeLinecap="round" strokeLinejoin="round" /> <circle cx={rHip.x} cy={rHip.y} r={rLegWidthScaled / 2 * 1.6} fill={bodyColor} /> </> );
 
         return (
             <g transform={`translate(${charInstance.x}, ${charInstance.y}) scale(${scaleX}, ${scaleY})`}>
@@ -308,17 +358,20 @@ const Character: React.FC<{
                         })()} fill={hairColor} />
                     </g>}
                     
+                    {lArmIsBehind && <g key="lArmBehind" filter={bodyOutlines ? `url(#${filterId})` : 'none'}>{renderLeftArm()}</g>}
+                    {rArmIsBehind && <g key="rArmBehind" filter={bodyOutlines ? `url(#${filterId})` : 'none'}>{renderRightArm()}</g>}
+
                     <g filter={bodyOutlines ? `url(#${filterId})` : 'none'}>
                         {viewFactor > 0 && (
                             <>
-                                <g key="lLeg"><path d={lFootPath} fill={bodyColor} /><path d={lLegPath} fill="none" stroke={bodyColor} strokeWidth={lLegWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={lHip.x} cy={lHip.y} r={lLegWidthScaled / 2 * 1.6} fill={bodyColor} /></g>
-                                <g key="lArm"><path d={lArmPath} fill="none" stroke={bodyColor} strokeWidth={lArmWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={lWrist.x} cy={lWrist.y} r={lHandSize/2} fill={bodyColor} /></g>
+                                <g key="lLeg">{renderLeftLeg()}</g>
+                                {!lArmIsBehind && <g key="lArm">{renderLeftArm()}</g>}
                             </>
                         )}
                         {viewFactor <= 0 && (
                             <>
-                                <g key="rLeg"><path d={rFootPath} fill={bodyColor} /><path d={rLegPath} fill="none" stroke={bodyColor} strokeWidth={rLegWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={rHip.x} cy={rHip.y} r={rLegWidthScaled / 2 * 1.6} fill={bodyColor} /></g>
-                                <g key="rArm"><path d={rArmPath} fill="none" stroke={bodyColor} strokeWidth={rArmWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={rWrist.x} cy={rWrist.y} r={rHandSize/2} fill={bodyColor} /></g>
+                                <g key="rLeg">{renderRightLeg()}</g>
+                                {!rArmIsBehind && <g key="rArm">{renderRightArm()}</g>}
                             </>
                         )}
                         
@@ -326,14 +379,14 @@ const Character: React.FC<{
 
                         {viewFactor > 0 && (
                              <>
-                                <g key="rLeg"><path d={rFootPath} fill={bodyColor} /><path d={rLegPath} fill="none" stroke={bodyColor} strokeWidth={rLegWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={rHip.x} cy={rHip.y} r={rLegWidthScaled / 2 * 1.6} fill={bodyColor} /></g>
-                                <g key="rArm"><path d={rArmPath} fill="none" stroke={bodyColor} strokeWidth={rArmWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={rWrist.x} cy={rWrist.y} r={rHandSize/2} fill={bodyColor} /></g>
+                                <g key="rLeg">{renderRightLeg()}</g>
+                                {!rArmIsBehind && <g key="rArm">{renderRightArm()}</g>}
                             </>
                         )}
                         {viewFactor <= 0 && (
                             <>
-                                 <g key="lLeg"><path d={lFootPath} fill={bodyColor} /><path d={lLegPath} fill="none" stroke={bodyColor} strokeWidth={lLegWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={lHip.x} cy={lHip.y} r={lLegWidthScaled / 2 * 1.6} fill={bodyColor} /></g>
-                                 <g key="lArm"><path d={lArmPath} fill="none" stroke={bodyColor} strokeWidth={lArmWidthScaled} strokeLinecap="round" strokeLinejoin="round" /><circle cx={lWrist.x} cy={lWrist.y} r={lHandSize/2} fill={bodyColor} /></g>
+                                 <g key="lLeg">{renderLeftLeg()}</g>
+                                 {!lArmIsBehind && <g key="lArm">{renderLeftArm()}</g>}
                             </>
                         )}
                     </g>
@@ -373,7 +426,6 @@ const Character: React.FC<{
                                     </g>
                                 );
                             case 'mouth': {
-                                const calculatedMouthWidth = headWidth * (mouthWidthRatio / 100);
                                 const calculatedMouthYOffset = (headHeight / 2) * (mouthYOffsetRatio / 100);
                                 const mouthYPos = headY + calculatedMouthYOffset;
                                 let finalMouthWidth = calculatedMouthWidth * (depthFactor * 0.8 + 0.2);

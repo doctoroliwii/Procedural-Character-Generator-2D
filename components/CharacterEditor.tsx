@@ -422,34 +422,8 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
         setIsGeneratingAll(true);
         setApiError(null);
         try {
-            const result = await generateFullCharacterProfile(charToUpdate, lore);
-            
-            // FIX: Cast result properties to string as the return type of generateFullCharacterProfile is incorrect.
-            // The API returns strings, but the type signature says RichText, causing a type mismatch.
-            const narrativeProfileWithRichText = {
-                ...result,
-                name: stringToRichText(result.name as unknown as string, 'ai'),
-                age: stringToRichText(result.age as unknown as string, 'ai'),
-                species: stringToRichText(result.species as unknown as string, 'ai'),
-                occupation: stringToRichText(result.occupation as unknown as string, 'ai'),
-                skills: stringToRichText(result.skills as unknown as string, 'ai'),
-                limitations: stringToRichText(result.limitations as unknown as string, 'ai'),
-                psychology: {
-                    motivation: stringToRichText(result.psychology.motivation as unknown as string, 'ai'),
-                    fear: stringToRichText(result.psychology.fear as unknown as string, 'ai'),
-                    virtues: stringToRichText(result.psychology.virtues as unknown as string, 'ai'),
-                    flaws: stringToRichText(result.psychology.flaws as unknown as string, 'ai'),
-                    archetype: stringToRichText(result.psychology.archetype as unknown as string, 'ai'),
-                },
-                backstory: {
-                    origin: stringToRichText(result.backstory.origin as unknown as string, 'ai'),
-                    wound: stringToRichText(result.backstory.wound as unknown as string, 'ai'),
-                    journey: stringToRichText(result.backstory.journey as unknown as string, 'ai'),
-                    initialState: stringToRichText(result.backstory.initialState as unknown as string, 'ai'),
-                }
-            };
-
-            const fullProfile = { ...charToUpdate, ...narrativeProfileWithRichText };
+            const narrativeResult = await generateFullCharacterProfile(charToUpdate, lore);
+            const fullProfile = { ...charToUpdate, ...narrativeResult };
             onCharacterProfilesChange(characterProfiles.map(p => p.id === charToUpdate.id ? fullProfile : p));
         } catch (error: any) {
             console.error("Error generating full character profile:", error);

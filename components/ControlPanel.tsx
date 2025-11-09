@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 // FIX: Add missing import for BackgroundOptions
 import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions } from '../types';
-import { CompulsivoLogo, DiceIcon } from './icons';
+import { COMPULSIVO_LOGO_BASE64, DiceIcon } from './icons';
 import Slider from './Slider';
 import ControlModule from './ControlModule';
 import LoreEditor from './NarrativeEditor';
@@ -31,6 +31,8 @@ interface ControlPanelProps {
   onAppendComicTheme: (theme: string) => void;
   numComicPanels: number;
   onNumComicPanelsChange: (value: number) => void;
+  numComicPages: number;
+  onNumComicPagesChange: (value: number) => void;
   comicAspectRatio: '1:1' | '16:9' | '9:16';
   onComicAspectRatioChange: (value: '1:1' | '16:9' | '9:16') => void;
   minComicFontSize: number;
@@ -64,6 +66,7 @@ interface ControlPanelProps {
   onGenerateSimpleCharacters: (count: number) => Promise<void>;
   isGeneratingSimpleCharacters: boolean;
   onRegenerateCharacterName: (characterId: string) => void;
+  onRandomizeCharacterAppearance: (characterId: string) => void;
   comicMode: 'simple' | 'custom';
   onComicModeChange: (mode: 'simple' | 'custom') => void;
   characterEditorTab: 'narrative' | 'appearance';
@@ -83,11 +86,92 @@ export interface PanelState {
 const richTextToString = (value: RichText | undefined): string => value?.map(s => s.text).join('') || '';
 const stringToRichText = (text: string, source: 'user' | 'ai'): RichText => [{ text, source }];
 
+// --- NEW SUB-COMPONENT ---
+interface CharacterListItemProps {
+  profile: CharacterProfile;
+  onUpdateName: (characterId: string, newName: string) => void;
+  onRegenerateName: (characterId: string) => void;
+  onUpdateParam: (characterId: string, param: keyof CharacterParams, value: any) => void;
+  onSelectForAppearance: (characterId: string) => void;
+  onRandomizeAppearance: (characterId: string) => void;
+  onRandomizeColor: (characterId: string) => void;
+}
+
+const CharacterListItem: React.FC<CharacterListItemProps> = ({
+  profile,
+  onUpdateName,
+  onRegenerateName,
+  onUpdateParam,
+  onSelectForAppearance,
+  onRandomizeAppearance,
+  onRandomizeColor,
+}) => {
+  // This is the critical fix: return early before calling any hooks.
+  if (!profile.characterParams) {
+    return null;
+  }
+
+  // Hooks are now safe to call.
+  const [name, setName] = React.useState(richTextToString(profile.name));
+  React.useEffect(() => {
+    setName(richTextToString(profile.name));
+  }, [profile.name]);
+
+  const handleNameBlur = () => {
+    if (name !== richTextToString(profile.name)) {
+      onUpdateName(profile.id, name);
+    }
+  };
+
+  return (
+    <div className="p-3 bg-panel-header rounded-lg space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onBlur={handleNameBlur}
+          onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          className="flex-grow p-1.5 border border-panel-border rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red"
+          aria-label="Character name"
+        />
+        <button onClick={() => onRegenerateName(profile.id)} className="p-1.5 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Regenerar nombre">
+          <DiceIcon className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="flex items-center gap-2 p-1.5 bg-white border border-panel-border rounded-md">
+          <label htmlFor={`color-${profile.id}`} className="font-semibold text-condorito-brown">Color</label>
+          <input
+            type="color"
+            id={`color-${profile.id}`}
+            value={profile.characterParams.bodyColor}
+            onChange={e => onUpdateParam(profile.id, 'bodyColor', e.target.value)}
+            className="w-6 h-6 p-0 border-none rounded cursor-pointer bg-transparent"
+          />
+          <button onClick={() => onRandomizeColor(profile.id)} className="ml-auto p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Color aleatorio">
+            <DiceIcon className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex items-center gap-2 p-1.5 bg-white border border-panel-border rounded-md">
+          <button onClick={() => onSelectForAppearance(profile.id)} className="flex-grow text-left font-semibold text-condorito-brown hover:text-condorito-red transition-colors">
+            Apariencia
+          </button>
+          <button onClick={() => onRandomizeAppearance(profile.id)} className="p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Apariencia aleatoria">
+            <DiceIcon className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { 
-    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
+    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
     // Narrative props
-    lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, isGeneratingSimpleCharacters, onRegenerateCharacterName, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
+    lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, isGeneratingSimpleCharacters, onRegenerateCharacterName, onRandomizeCharacterAppearance, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
     setApiError, onGenerateProject
   } = props;
   
@@ -120,18 +204,6 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const handleRandomizeCharacterColor = (characterId: string) => {
     const newColor = getRandomParamValue('bodyColor');
     handleUpdateCharacterParam(characterId, 'bodyColor', newColor);
-  };
-
-  const handleRandomizeCharacterAppearance = (characterId: string) => {
-    onCharacterProfilesChange(prev => prev.map(p => {
-        if (p.id === characterId) {
-            return {
-                ...p,
-                characterParams: generateRandomAppearanceParams(p.characterParams),
-            };
-        }
-        return p;
-    }));
   };
 
 
@@ -320,66 +392,22 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                                   <p className="text-xs text-condorito-brown select-none">
                                     Personajes actuales.
                                   </p>
-                                  {characterProfiles.map(profile => {
-                                      const [name, setName] = React.useState(richTextToString(profile.name));
-                                      React.useEffect(() => {
-                                        setName(richTextToString(profile.name));
-                                      }, [profile.name]);
-
-                                      const handleNameBlur = () => {
-                                        if (name !== richTextToString(profile.name)) {
-                                          handleUpdateCharacterName(profile.id, name);
-                                        }
-                                      };
-
-                                      if (!profile.characterParams) return null;
-
-                                      return (
-                                        <div key={profile.id} className="p-3 bg-panel-header rounded-lg space-y-3">
-                                          <div className="flex items-center gap-2">
-                                            <input
-                                              type="text"
-                                              value={name}
-                                              onChange={e => setName(e.target.value)}
-                                              onBlur={handleNameBlur}
-                                              onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                                              className="flex-grow p-1.5 border border-panel-border rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red"
-                                              aria-label="Character name"
-                                            />
-                                            <button onClick={() => onRegenerateCharacterName(profile.id)} className="p-1.5 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Regenerar nombre">
-                                              <DiceIcon className="w-4 h-4" />
-                                            </button>
-                                          </div>
-                                          <div className="grid grid-cols-2 gap-2 text-xs">
-                                            <div className="flex items-center gap-2 p-1.5 bg-white border border-panel-border rounded-md">
-                                              <label htmlFor={`color-${profile.id}`} className="font-semibold text-condorito-brown">Color</label>
-                                              <input
-                                                type="color"
-                                                id={`color-${profile.id}`}
-                                                value={profile.characterParams.bodyColor}
-                                                onChange={e => handleUpdateCharacterParam(profile.id, 'bodyColor', e.target.value)}
-                                                className="w-6 h-6 p-0 border-none rounded cursor-pointer bg-transparent"
-                                              />
-                                              <button onClick={() => handleRandomizeCharacterColor(profile.id)} className="ml-auto p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Color aleatorio">
-                                                <DiceIcon className="w-4 h-4" />
-                                              </button>
-                                            </div>
-                                            <div className="flex items-center gap-2 p-1.5 bg-white border border-panel-border rounded-md">
-                                              <button onClick={() => {
-                                                onSelectedCharIdChange(profile.id);
-                                                onCharacterEditorTabChange('appearance');
-                                                togglePanel('CharacterEditor');
-                                              }} className="flex-grow text-left font-semibold text-condorito-brown hover:text-condorito-red transition-colors">
-                                                Apariencia
-                                              </button>
-                                              <button onClick={() => handleRandomizeCharacterAppearance(profile.id)} className="p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors" title="Apariencia aleatoria">
-                                                <DiceIcon className="w-4 h-4" />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
+                                  {characterProfiles.map(profile => (
+                                      <CharacterListItem
+                                          key={profile.id}
+                                          profile={profile}
+                                          onUpdateName={handleUpdateCharacterName}
+                                          onRegenerateName={onRegenerateCharacterName}
+                                          onUpdateParam={handleUpdateCharacterParam}
+                                          onSelectForAppearance={(id) => {
+                                              onSelectedCharIdChange(id);
+                                              onCharacterEditorTabChange('appearance');
+                                              togglePanel('CharacterEditor');
+                                          }}
+                                          onRandomizeAppearance={onRandomizeCharacterAppearance}
+                                          onRandomizeColor={handleRandomizeCharacterColor}
+                                      />
+                                  ))}
                                 </div>
                               ) : (
                                 <p className="text-center text-xs text-condorito-brown select-none p-4">
@@ -406,6 +434,16 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                               </div>
                               <textarea id="comic-scene" value={comicScene} onChange={e => onComicSceneChange(e.target.value)} rows={4} className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white text-condorito-brown" placeholder="e.g., Two friends in a park" />
                             </div>
+                             {comicMode === 'simple' && (
+                                <Slider 
+                                    label="Número de Páginas"
+                                    min={1}
+                                    max={20}
+                                    step={1}
+                                    value={numComicPages}
+                                    onChange={e => onNumComicPagesChange(Number(e.target.value))}
+                                />
+                            )}
                             <p className="text-xs text-condorito-brown/80 select-none">
                                 Describe el lugar y la situación donde se desarrolla toda la tira cómica para mantener la coherencia del fondo.
                             </p>
@@ -474,7 +512,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
           case 'About':
             content = (
               <div className="text-xs text-condorito-brown space-y-3 select-none flex flex-col items-center">
-                <CompulsivoLogo className="w-32 h-auto text-condorito-wood" />
+                <img src={COMPULSIVO_LOGO_BASE64} alt="Compulsivo Studio Logo" className="w-32 h-auto" />
                 <p className="font-bold text-sm text-condorito-red pt-2">Plop!</p>
                 <p>Developed by Compulsivo Studio - 2025</p>
               </div>
