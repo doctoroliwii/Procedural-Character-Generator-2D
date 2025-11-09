@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { CharacterParams, CharacterInstance, ComicPanelData } from '../types';
+import type { CharacterParams, CharacterInstance, ComicPanelData, ProceduralBackground } from '../types';
 import Character from './Character';
 
 // --- START HELPER FUNCTIONS ---

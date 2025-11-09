@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment, Project } from './types';
+import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment, Project, NarrativeScript, NarrativePanelScript, ProceduralBackground } from './types';
 import { INITIAL_PARAMS, PARAM_CONFIGS } from './constants';
+import { INITIAL_BACKGROUND } from './constants/backgroundDefaults';
 import CharacterCanvas from './components/CharacterCanvas';
 import ControlPanel, { PanelKey, PanelState } from './components/ControlPanel';
 import MenuBar from './components/MenuBar';
 import WelcomeModal from './components/WelcomeModal';
-import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, ComicScript, generatePanelBackground, generateFullCharacterProfile, generateCharacterName, generateSceneDescription, generateVariantPanelBackground } from './services/geminiService';
+import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, generatePanelBackground, generateFullCharacterProfile, generateCharacterName, generateSceneDescription, generateVariantPanelBackground } from './services/geminiService';
 import { CloseIcon, WarningIcon } from './components/icons';
 import { generateRandomParams, generateRandomAppearanceParams } from './services/characterGenerationService';
 import StatusBar from './components/StatusBar';
@@ -206,6 +207,15 @@ function App() {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   
+  // Editable Script State
+  const [narrativeScript, setNarrativeScript] = useState<NarrativeScript | null>(null);
+  const [selectedPageIndex, setSelectedPageIndex] = useState(0);
+  const [selectedPanelIndex, setSelectedPanelIndex] = useState(0);
+
+  // Procedural Background State
+  const [proceduralBackgrounds, setProceduralBackgrounds] = useState<ProceduralBackground[]>([]);
+  const [selectedBackgroundId, setSelectedBackgroundId] = useState<string | null>(null);
+
   const comicCanvasRef = useRef<{ export: (pageNumber?: number) => void }>(null);
 
 
@@ -213,6 +223,7 @@ function App() {
     Comic: { isOpen: false, position: { x: 0, y: 40 }, zIndex: 1 },
     LoreEditor: { isOpen: false, position: { x: 340, y: 240 }, zIndex: 1 },
     CharacterEditor: { isOpen: false, position: { x: 20, y: 60 }, zIndex: 1 },
+    BackgroundEditor: { isOpen: false, position: { x: 60, y: 80 }, zIndex: 1 },
     Options: { isOpen: false, position: { x: 80, y: 120 }, zIndex: 1 },
     About: { isOpen: false, position: { x: 90, y: 130 }, zIndex: 1 },
     TrendingTheme: { isOpen: false, position: { x: 250, y: 40 }, zIndex: 1 },
@@ -285,6 +296,7 @@ function App() {
   const handleNewCharacter = useCallback(() => {
     setComicPanels(null);
     setProject(null);
+    setNarrativeScript(null);
     const newProfile: CharacterProfile = {
       id: `char-${Date.now()}`,
       name: stringToRichText('New Character'),
@@ -320,6 +332,7 @@ function App() {
   const handleNewComic = useCallback(() => {
     setComicPanels([]);
     setProject(null);
+    setNarrativeScript(null);
     setCharacterProfiles([]);
     setSelectedCharId(null);
     openPanel('Comic');
@@ -329,6 +342,7 @@ function App() {
   const handleNewUniverse = useCallback(() => {
     setComicPanels(null);
     setProject(null);
+    setNarrativeScript(null);
     setCharacterProfiles([]);
     setSelectedCharId(null);
     openPanel('LoreEditor');
@@ -338,13 +352,27 @@ function App() {
   const handleNewProject = useCallback(() => {
     setComicPanels(null);
     setProject(null);
+    setNarrativeScript(null);
     openPanel('ProjectSettings');
     setAppState('editing');
   }, [openPanel]);
 
+  const handleNewBackground = useCallback(() => {
+    const newBg: ProceduralBackground = {
+        ...INITIAL_BACKGROUND,
+        id: `bg-${Date.now()}`,
+        name: `New Background ${proceduralBackgrounds.length + 1}`,
+    };
+    setProceduralBackgrounds(prev => [...prev, newBg]);
+    setSelectedBackgroundId(newBg.id);
+    openPanel('BackgroundEditor');
+    setAppState('editing');
+  }, [proceduralBackgrounds, openPanel]);
+
   const handleRandomize = useCallback(() => {
     setComicPanels(null);
     setProject(null);
+    setNarrativeScript(null);
     const randomParams = generateRandomParams();
     randomParams.bodyOutlines = true;
     randomParams.eyeOutlines = true;
@@ -374,7 +402,7 @@ function App() {
   };
   
   useEffect(() => {
-    if (project || comicPanels !== null || panels.CharacterEditor.isOpen) {
+    if (project || comicPanels !== null || panels.CharacterEditor.isOpen || panels.BackgroundEditor.isOpen) {
       setCharacters([]);
       return;
     }
@@ -391,7 +419,7 @@ function App() {
         }] : [];
     
     setCharacters(instances);
-  }, [characterProfiles, selectedCharId, project, comicPanels, panels.CharacterEditor.isOpen]);
+  }, [characterProfiles, selectedCharId, project, comicPanels, panels.CharacterEditor.isOpen, panels.BackgroundEditor.isOpen]);
 
   const generatePanelLayouts = (count: number) => {
     if (count <= 0) return [];
@@ -477,15 +505,15 @@ function App() {
     return newParams;
   };
 
-  const processComicScript = useCallback(async (script: ComicScript, characterParamsList: CharacterParams[]): Promise<ComicPanelData[]> => {
+  const processComicScript = useCallback(async (panels: NarrativePanelScript[], characterParamsList: CharacterParams[]): Promise<ComicPanelData[]> => {
       const newPanels: ComicPanelData[] = [];
-      const panelLayouts = generatePanelLayouts(script.panels.length);
+      const panelLayouts = generatePanelLayouts(panels.length);
 
       const isRTL = comicLanguage === 'ja' || comicLanguage === 'zh';
       let layoutMap = panelLayouts.map((_, i) => i);
 
       if (isRTL) {
-          const numPanels = script.panels.length;
+          const numPanels = panels.length;
           if (numPanels === 2) { layoutMap = [1, 0]; }
           else if (numPanels === 3) { layoutMap = [0, 2, 1]; }
           else if (numPanels === 4) { layoutMap = [1, 0, 3, 2]; }
@@ -494,21 +522,21 @@ function App() {
       }
 
       let backgroundImages: string[] = [];
-      if (script.panels.length > 0) {
+      if (panels.length > 0) {
         // 1. Generate the first panel's background to use as a reference.
-        const firstBg = await generatePanelBackground(script.panels[0].description);
+        const firstBg = await generatePanelBackground(panels[0].techNotes || panels[0].description);
         
         // 2. If there are more panels, generate them as variants of the first one for consistency.
-        const variantPromises = script.panels.slice(1).map(panel => 
-            generateVariantPanelBackground(firstBg, panel.description)
+        const variantPromises = panels.slice(1).map(panel => 
+            generateVariantPanelBackground(firstBg, panel.techNotes || panel.description)
         );
         
         const variantBgs = await Promise.all(variantPromises);
         backgroundImages = [firstBg, ...variantBgs];
       }
 
-      for (let i = 0; i < script.panels.length; i++) {
-        const panelScript = script.panels[i];
+      for (let i = 0; i < panels.length; i++) {
+        const panelScript = panels[i];
         const layout = panelLayouts[layoutMap[i]];
         const panelCharacters: CharacterInstance[] = [];
 
@@ -535,41 +563,56 @@ function App() {
       return newPanels;
   }, [comicLanguage]);
 
-  const handleGenerateComic = useCallback(async (mode: 'simple' | 'custom', options?: { theme?: string; panels?: number; language?: string; }, customData?: { lore: Lore, story: Story, characterProfiles: CharacterProfile[] }) => {
+  const handleGenerateComic = useCallback(async (mode: 'simple' | 'custom', options?: { theme?: string; language?: string; }, customData?: { lore: Lore, story: Story, characterProfiles: CharacterProfile[] }) => {
     setIsGeneratingComic(true);
     setApiError(null);
     setComicPanels(null);
     setProject(null);
+    setNarrativeScript(null);
     
     try {
       const sceneToUse = comicScene;
       
       if (mode === 'simple') {
         const themeToUse = options?.theme ?? comicTheme;
-        const panelsPerPage = options?.panels ?? numComicPanels;
         const languageToUse = options?.language ?? comicLanguage;
 
-        let profilesToUse: CharacterProfile[];
-        if (characterProfiles.length > 0) {
-            profilesToUse = characterProfiles;
-        } else {
-            profilesToUse = await (async () => {
-                const newProfiles: CharacterProfile[] = [];
-                const numCharsToGen = 2; 
-                const namePromises = [];
-                for (let i = 0; i < numCharsToGen; i++) {
-                    namePromises.push(generateCharacterName(options?.theme ?? comicTheme, options?.language ?? comicLanguage));
-                }
-                const generatedNames = await Promise.all(namePromises);
+        // Determine number of characters to request
+        const numCharsToGen = characterProfiles.length > 0 ? characterProfiles.length : 2; 
+        const characterNames = characterProfiles.map(p => richTextToString(p.name));
 
-                for (let i = 0; i < numCharsToGen; i++) {
+        // Generate Script first
+        const script = await generateComicScript(
+            themeToUse,
+            sceneToUse,
+            numComicPages,
+            languageToUse,
+            numCharsToGen,
+            characterNames
+        );
+        
+        setNarrativeScript(script);
+        setSelectedPageIndex(0);
+        setSelectedPanelIndex(0);
+
+        let finalProfiles: CharacterProfile[];
+        
+        if (characterProfiles.length > 0) {
+            finalProfiles = characterProfiles;
+        } else {
+            // If no characters exist, create them from the script's character list
+            const scriptCharacters = script.characterList || [];
+            const newProfiles: CharacterProfile[] = [];
+            if (scriptCharacters.length > 0) {
+                for (let i = 0; i < scriptCharacters.length; i++) {
+                    const charFromScript = scriptCharacters[i];
                     const randomParams = generateRandomParams();
                     randomParams.bodyOutlines = true;
                     randomParams.eyeOutlines = true;
                     randomParams.eyeTracking = false;
                     newProfiles.push({
-                        id: `char-simple-${Date.now()}-${i}`,
-                        name: stringToRichText(generatedNames[i] || `Personaje ${i + 1}`),
+                        id: `char-script-${Date.now()}-${i}`,
+                        name: stringToRichText(charFromScript.name, 'ai'),
                         age: emptyRichText(), species: emptyRichText(), occupation: emptyRichText(), originLocationId: '',
                         psychology: { motivation: emptyRichText(), fear: emptyRichText(), virtues: emptyRichText(), flaws: emptyRichText(), archetype: emptyRichText() },
                         skills: emptyRichText(), limitations: emptyRichText(),
@@ -579,49 +622,21 @@ function App() {
                 }
                 setCharacterProfiles(newProfiles);
                 setSelectedCharId(newProfiles.length > 0 ? newProfiles[0].id : null);
-                return newProfiles;
-            })();
+            }
+            finalProfiles = newProfiles;
         }
-        const characterParamsList = profilesToUse.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
+        
+        const characterParamsList = finalProfiles.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
         
         const pages: ComicPanelData[][] = [];
-
-        const isMultiPageStory = numComicPages > 1;
-        const totalPanels = isMultiPageStory ? numComicPages * panelsPerPage : panelsPerPage;
-
-        const script = await generateComicScript(
-            themeToUse,
-            totalPanels,
-            languageToUse,
-            profilesToUse.length,
-            sceneToUse,
-            isMultiPageStory
-        );
-
-        if (script && script.panels && script.panels.length > 0) {
-            if (isMultiPageStory) {
-                const batchSize = 5; // Process 5 pages in parallel at a time
-                for (let i = 0; i < numComicPages; i += batchSize) {
-                    const pagePromises: Promise<ComicPanelData[]>[] = [];
-                    const end = Math.min(i + batchSize, numComicPages);
-                    for (let j = i; j < end; j++) {
-                        const pagePanelsData = script.panels.slice(j * panelsPerPage, (j + 1) * panelsPerPage);
-                        if (pagePanelsData.length > 0) {
-                            const pageScript: ComicScript = {
-                                ...script,
-                                panels: pagePanelsData,
-                            };
-                            pagePromises.push(processComicScript(pageScript, characterParamsList));
-                        }
-                    }
-                    if (pagePromises.length > 0) {
-                      const resolvedPages = await Promise.all(pagePromises);
-                      pages.push(...resolvedPages);
-                    }
-                }
-            } else {
-                const newPanels = await processComicScript(script, characterParamsList);
-                pages.push(newPanels);
+        if (script && script.pages && script.pages.length > 0) {
+            const batchSize = 5; // Process 5 pages in parallel at a time
+            for (let i = 0; i < script.pages.length; i += batchSize) {
+                const pagePromises = script.pages.slice(i, i + batchSize).map(page =>
+                    processComicScript(page.panels, characterParamsList)
+                );
+                const resolvedPages = await Promise.all(pagePromises);
+                pages.push(...resolvedPages);
             }
         } else {
             console.warn(`Generated an empty or invalid script. Skipping comic generation.`);
@@ -638,7 +653,7 @@ function App() {
                 seasons: 1,
                 episodes: pages.length,
                 lore: null,
-                characterProfiles: profilesToUse,
+                characterProfiles: finalProfiles,
                 comicPages: pages
             };
             setProject(newProject);
@@ -657,6 +672,10 @@ function App() {
           throw new Error("Please define Lore, Characters, and a Story in the Narrative Editor first.");
         }
         const script = await generateComicScriptFromStory(storyToUse, loreToUse, profilesToUse, numComicPanels, comicLanguage, sceneToUse);
+        
+        setNarrativeScript(script);
+        setSelectedPageIndex(0);
+        setSelectedPanelIndex(0);
 
         if (!customData) { // Only update profiles if not using custom one-off data
           const updatedProfiles = profilesToUse.map(p => {
@@ -674,9 +693,10 @@ function App() {
         
         const characterParamsList = storyToUse.characterProfileIds.map(id => profilesToUse.find(p => p.id === id)?.characterParams).filter(Boolean) as CharacterParams[];
         
-        // FIX: Replaced incorrect boolean/number comparison with a simple check for an empty array.
-        if (!script || !script.panels || script.panels.length === 0) throw new Error("Received an empty or invalid script from the API.");
-        const newPanels = await processComicScript(script, characterParamsList);
+        if (!script || !script.pages || script.pages.length === 0 || script.pages[0].panels.length === 0) {
+            throw new Error("Received an empty or invalid script from the API.");
+        }
+        const newPanels = await processComicScript(script.pages[0].panels, characterParamsList);
         setComicPanels(newPanels);
       }
     } catch (error: any) {
@@ -1002,6 +1022,7 @@ function App() {
     setApiError(null);
     setProject(null);
     setComicPanels(null);
+    setNarrativeScript(null);
 
     const { name, genre, seasons, episodes } = settings;
     const projectLore = lore;
@@ -1028,12 +1049,14 @@ function App() {
     const characterParamsList = updatedProfiles.map(p => p.characterParams!);
 
     try {
+        const episodeTheme = `${richTextToString(genre)}: Temporada ${seasons} de "${richTextToString(name)}"`;
+        const script = await generateComicScript(episodeTheme, comicScene, episodes, comicLanguage, characterParamsList.length);
+        setNarrativeScript(script);
+        
         const pages: ComicPanelData[][] = [];
-        for (let i = 0; i < episodes; i++) {
-            const episodeTheme = `${richTextToString(genre)}: Episodio ${i + 1} de la temporada ${seasons} de "${richTextToString(name)}"`;
-            const script = await generateComicScript(episodeTheme, numComicPanels, comicLanguage, characterParamsList.length, comicScene);
-            const newPanels = await processComicScript(script, characterParamsList);
-            pages.push(newPanels);
+        if (script && script.pages) {
+            const pagePromises = script.pages.map(page => processComicScript(page.panels, characterParamsList));
+            pages.push(...await Promise.all(pagePromises));
         }
         
         const newProject: Project = {
@@ -1054,7 +1077,7 @@ function App() {
     } finally {
         setIsGeneratingComic(false);
     }
-  }, [lore, characterProfiles, numComicPanels, comicLanguage, comicScene, processComicScript, openPanel, togglePanel]);
+  }, [lore, characterProfiles, comicLanguage, comicScene, processComicScript, openPanel, togglePanel]);
 
 
   const handleExportComic = useCallback(async (mode: 'current' | 'batch') => {
@@ -1280,7 +1303,9 @@ function App() {
     ? 'LoreEditor'
     : (panels.CharacterEditor.isOpen
       ? 'CharacterEditor'
-      : null);
+      : (panels.BackgroundEditor.isOpen
+        ? 'BackgroundEditor'
+        : null));
 
   const handleZoom = useCallback((factor: number) => {
     setViewBox(prev => {
@@ -1333,6 +1358,7 @@ function App() {
         onNewComic={handleNewComic}
         onNewUniverse={handleNewUniverse}
         onNewProject={handleNewProject}
+        onNewBackground={handleNewBackground}
         onRandomize={handleRandomize} 
         onRandomizeComic={handleRandomizeComic} 
         isRandomizingComic={isRandomizingComic} 
@@ -1342,6 +1368,19 @@ function App() {
         onExportComic={handleExportComic}
       />
       <main className={`flex-grow relative ${fullScreenPanelKey ? 'invisible' : ''}`}>
+        {project && project.comicPages.length > 1 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 p-2 bg-panel-back/90 backdrop-blur-sm rounded-lg shadow-lg border border-panel-border flex items-center gap-4">
+                <button onClick={handlePrevPage} disabled={currentPageIndex === 0} className="p-2 bg-panel-header rounded-full text-condorito-brown hover:bg-panel-border disabled:opacity-30 disabled:cursor-not-allowed transition-opacity">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <div className="font-bold text-sm text-condorito-brown select-none whitespace-nowrap tabular-nums">
+                    Página {currentPageIndex + 1} / {project.comicPages.length}
+                </div>
+                <button onClick={handleNextPage} disabled={currentPageIndex >= project.comicPages.length - 1} className="p-2 bg-panel-header rounded-full text-condorito-brown hover:bg-panel-border disabled:opacity-30 disabled:cursor-not-allowed transition-opacity">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+            </div>
+        )}
         <CharacterCanvas 
             ref={comicCanvasRef}
             characters={characters} 
@@ -1357,10 +1396,6 @@ function App() {
             canvasResetToken={canvasResetToken} 
             viewBox={viewBox}
             onViewBoxChange={setViewBox}
-            currentPage={currentPageIndex}
-            totalPages={project ? project.comicPages.length : 0}
-            onNextPage={handleNextPage}
-            onPrevPage={handlePrevPage}
         />
       </main>
       {!fullScreenPanelKey && (
@@ -1435,6 +1470,16 @@ function App() {
           onCharacterEditorTabChange={setCharacterEditorTab}
           setApiError={setApiError}
           onGenerateProject={handleGenerateProject}
+          narrativeScript={narrativeScript}
+          onNarrativeScriptChange={setNarrativeScript}
+          selectedPageIndex={selectedPageIndex}
+          onSelectedPageIndexChange={setSelectedPageIndex}
+          selectedPanelIndex={selectedPanelIndex}
+          onSelectedPanelIndexChange={setSelectedPanelIndex}
+          proceduralBackgrounds={proceduralBackgrounds}
+          onProceduralBackgroundsChange={setProceduralBackgrounds}
+          selectedBackgroundId={selectedBackgroundId}
+          onSelectedBackgroundIdChange={setSelectedBackgroundId}
         />
     </div>
   );

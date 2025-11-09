@@ -231,12 +231,17 @@ const Character: React.FC<{
             }
         }
         
+        // Eye positioning with proper 2.5D projection
         const eyeBaseX = headWidth * (eyeSpacingRatio / 100) / 2;
-        const eyeZ = headWidth * 0.12;
+        const eyeZ = headWidth * 0.25; // Increased Z depth for more pronounced effect
         const eyeYPos = headY;
         
-        const leftProj = projectOnHead(-eyeBaseX, -eyeZ);
-        const rightProj = projectOnHead(eyeBaseX, eyeZ);
+        // Eyes move along the X axis based on view angle
+        const leftEyeX = -eyeBaseX * Math.abs(depthFactor); // Left eye moves toward center
+        const rightEyeX = eyeBaseX * Math.abs(depthFactor); // Right eye moves toward center
+        
+        const leftProj = projectOnHead(leftEyeX, -eyeZ);
+        const rightProj = projectOnHead(rightEyeX, eyeZ);
 
         const baseEyeRx = calculatedEyeSize * 0.85;
         const baseEyeRy = calculatedEyeSize;

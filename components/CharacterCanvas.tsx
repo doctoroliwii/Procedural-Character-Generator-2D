@@ -17,15 +17,11 @@ interface CharacterCanvasProps {
   canvasResetToken: number;
   viewBox: { x: number; y: number; width: number; height: number; };
   onViewBoxChange: (updater: { x: number; y: number; width: number; height: number; } | ((prev: { x: number; y: number; width: number; height: number; }) => { x: number; y: number; width: number; height: number; })) => void;
-  currentPage: number;
-  totalPages: number;
-  onNextPage: () => void;
-  onPrevPage: () => void;
   panMode?: 'space' | 'direct';
 }
 
 
-const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, viewBox, onViewBoxChange, currentPage, totalPages, onNextPage, onPrevPage, panMode = 'direct' }, ref) => {
+const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, viewBox, onViewBoxChange, panMode = 'direct' }, ref) => {
   const VIEWBOX_WIDTH_BASE = 400;
   const VIEWBOX_HEIGHT = 700;
   
@@ -363,34 +359,6 @@ const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => void }), 
                         />
                       )}
                 </g>
-            )}
-            
-            {/* Project navigation for multi-page comics */}
-            {totalPages > 0 && (
-              <>
-                 <foreignObject x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} className="pointer-events-none">
-                    <div className="w-full h-full relative flex items-center justify-between px-4">
-                        <button onClick={onPrevPage} disabled={currentPage === 0} className="pointer-events-auto p-3 bg-panel-back/50 rounded-full text-condorito-brown hover:bg-panel-back disabled:opacity-30 disabled:cursor-not-allowed transition-opacity">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                        </button>
-                        <button onClick={onNextPage} disabled={currentPage >= totalPages - 1} className="pointer-events-auto p-3 bg-panel-back/50 rounded-full text-condorito-brown hover:bg-panel-back disabled:opacity-30 disabled:cursor-not-allowed transition-opacity">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </button>
-                    </div>
-                </foreignObject>
-                 <text
-                    x={viewBox.x + viewBox.width / 2}
-                    y={viewBox.y + viewBox.height - 20}
-                    textAnchor="middle"
-                    fill="#4A2E2C"
-                    fontSize="16"
-                    fontFamily="sans-serif"
-                    fontWeight="bold"
-                    style={{textShadow: '0 0 5px white'}}
-                >
-                    {currentPage + 1} / {totalPages}
-                </text>
-              </>
             )}
         </svg>
     </div>

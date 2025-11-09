@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 // FIX: Add missing import for BackgroundOptions
-import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions } from '../types';
+import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions, NarrativeScript, DialogueData, ProceduralBackground } from '../types';
 import { COMPULSIVO_LOGO_BASE64, DiceIcon } from './icons';
 import Slider from './Slider';
 import ControlModule from './ControlModule';
@@ -9,6 +9,7 @@ import CharacterEditor from './CharacterEditor';
 import TrendingThemePanel from './TrendingThemePanel';
 import { generateRandomAppearanceParams, getRandomParamValue } from '../services/characterGenerationService';
 import ProjectSettingsPanel from './ProjectSettingsPanel';
+import BackgroundEditor from './BackgroundEditor';
 
 interface ControlPanelProps {
   panels: Record<PanelKey, PanelState>;
@@ -73,9 +74,21 @@ interface ControlPanelProps {
   onCharacterEditorTabChange: (tab: 'narrative' | 'appearance') => void;
   setApiError: (error: string | null) => void;
   onGenerateProject: (settings: { name: RichText; genre: RichText; seasons: number; episodes: number; }) => Promise<void>;
+  // Script Editor props
+  narrativeScript: NarrativeScript | null;
+  onNarrativeScriptChange: (script: NarrativeScript | null) => void;
+  selectedPageIndex: number;
+  onSelectedPageIndexChange: (index: number) => void;
+  selectedPanelIndex: number;
+  onSelectedPanelIndexChange: (index: number) => void;
+  // Background Editor Props
+  proceduralBackgrounds: ProceduralBackground[];
+  onProceduralBackgroundsChange: (updater: (prev: ProceduralBackground[]) => ProceduralBackground[]) => void;
+  selectedBackgroundId: string | null;
+  onSelectedBackgroundIdChange: (id: string | null) => void;
 }
 
-export type PanelKey = 'Options' | 'About' | 'Comic' | 'LoreEditor' | 'CharacterEditor' | 'TrendingTheme' | 'ProjectSettings';
+export type PanelKey = 'Options' | 'About' | 'Comic' | 'LoreEditor' | 'CharacterEditor' | 'TrendingTheme' | 'ProjectSettings' | 'BackgroundEditor';
 
 export interface PanelState {
   isOpen: boolean;
@@ -172,10 +185,15 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
     // Narrative props
     lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, isGeneratingSimpleCharacters, onRegenerateCharacterName, onRandomizeCharacterAppearance, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
-    setApiError, onGenerateProject
+    setApiError, onGenerateProject,
+    // Script Editor props
+    narrativeScript, onNarrativeScriptChange, selectedPageIndex, onSelectedPageIndexChange, selectedPanelIndex, onSelectedPanelIndexChange,
+    // Background Editor props
+    proceduralBackgrounds, onProceduralBackgroundsChange, selectedBackgroundId, onSelectedBackgroundIdChange,
   } = props;
   
   const [activeComicTab, setActiveComicTab] = React.useState<'main' | 'characters' | 'scene'>('main');
+  const [sceneViewTab, setSceneViewTab] = useState<'setup' | 'page' | 'panel'>('setup');
   const [numSimpleChars, setNumSimpleChars] = React.useState(2);
 
   const panelsToRender = fullScreenPanelKey
@@ -205,6 +223,30 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     const newColor = getRandomParamValue('bodyColor');
     handleUpdateCharacterParam(characterId, 'bodyColor', newColor);
   };
+  
+  const handleScriptChange = (
+      pageIndex: number, 
+      panelIndex: number | null, 
+      field: string, 
+      value: any,
+      dialogueIndex: number | null = null,
+      dialogueField: 'characterId' | 'text' | null = null
+  ) => {
+    if (!narrativeScript) return;
+    const newScript = structuredClone(narrativeScript);
+
+    if (panelIndex === null) { // Page-level change
+      (newScript.pages[pageIndex] as any)[field] = value;
+    } else { // Panel-level change
+      const panel = newScript.pages[pageIndex].panels[panelIndex];
+      if (dialogueIndex !== null && dialogueField !== null) {
+        panel.dialogues[dialogueIndex][dialogueField] = value;
+      } else {
+        (panel as any)[field] = value;
+      }
+    }
+    onNarrativeScriptChange(newScript);
+  };
 
 
   return (
@@ -214,17 +256,29 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
         if (!panelState.isOpen) return null;
         
         const isFullScreen = key === fullScreenPanelKey;
-        const isWidePanel = !isFullScreen && (key === 'LoreEditor' || key === 'CharacterEditor' || key === 'Comic');
+        const isWidePanel = !isFullScreen && (key === 'LoreEditor' || key === 'CharacterEditor' || key === 'Comic' || key === 'BackgroundEditor');
 
         let title: string = key;
         if (key === 'LoreEditor') title = 'Editor de Universo';
         if (key === 'CharacterEditor') title = 'Editor de Personajes';
+        if (key === 'BackgroundEditor') title = 'Editor de Fondos';
         if (key === 'TrendingTheme') title = 'Trending Theme';
         if (key === 'ProjectSettings') title = 'Project Settings';
 
 
         let content: React.ReactNode = null;
         switch (key) {
+          case 'BackgroundEditor':
+            content = (
+              <BackgroundEditor
+                backgrounds={proceduralBackgrounds}
+                onBackgroundsChange={onProceduralBackgroundsChange}
+                selectedId={selectedBackgroundId}
+                onSelectedIdChange={onSelectedBackgroundIdChange}
+                setApiError={setApiError}
+              />
+            );
+            break;
           case 'ProjectSettings': {
             content = (
               <ProjectSettingsPanel
@@ -274,8 +328,8 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
             break;
           case 'Comic':
             const fontOptions = ['Comic Neue', 'Bangers', 'Luckiest Guy', 'Fredoka'];
-            const SubTabButton = ({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) => (
-              <button onClick={onClick} className={`select-none flex-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-white text-condorito-red shadow-sm' : 'text-condorito-brown bg-panel-header/0 hover:bg-panel-border'}`}>
+            const SubTabButton = ({ label, active, onClick, disabled }: { label: string, active: boolean, onClick: () => void, disabled?: boolean }) => (
+              <button onClick={onClick} disabled={disabled} className={`select-none flex-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-white text-condorito-red shadow-sm' : 'text-condorito-brown bg-panel-header/0 hover:bg-panel-border'} disabled:opacity-50 disabled:cursor-not-allowed`}>
                   {label}
               </button>
             );
@@ -359,34 +413,9 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                         <div className="space-y-3">
                           {comicMode === 'simple' ? (
                             <div className="space-y-4">
-                              <Slider 
-                                label="Cantidad de Personajes"
-                                min={1}
-                                max={4}
-                                step={1}
-                                value={numSimpleChars}
-                                onChange={e => setNumSimpleChars(Number(e.target.value))}
-                              />
-                              <div className="space-y-2">
-                                <button
-                                  onClick={() => onGenerateSimpleCharacters(numSimpleChars)}
-                                  disabled={isGeneratingSimpleCharacters}
-                                  className="w-full relative overflow-hidden bg-condorito-red text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 hover:brightness-95 transition-colors disabled:bg-panel-border disabled:cursor-not-allowed"
-                                >
-                                  <span className="relative z-10 flex items-center justify-center gap-2">
-                                    <DiceIcon className={`w-4 h-4 ${isGeneratingSimpleCharacters ? 'animate-spin' : ''}`} />
-                                    <span>{isGeneratingSimpleCharacters ? 'Generating...' : 'Generate Characters'}</span>
-                                  </span>
-                                  {isGeneratingSimpleCharacters && <div className="absolute inset-0 loading-bar-progress"></div>}
-                                </button>
-                                <button
-                                  onClick={() => onGenerateNarrativeElement('character')}
-                                  className="w-full bg-condorito-green text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 hover:brightness-95 transition-colors"
-                                >
-                                  + Add Character
-                                </button>
-                              </div>
-
+                              <p className="text-xs text-center p-2 bg-panel-header rounded-lg text-condorito-brown">
+                                Los personajes se generarán automáticamente a partir del guion del cómic.
+                              </p>
                               {characterProfiles.length > 0 ? (
                                 <div className="space-y-2 pt-4 border-t border-panel-header">
                                   <p className="text-xs text-condorito-brown select-none">
@@ -411,7 +440,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                                 </div>
                               ) : (
                                 <p className="text-center text-xs text-condorito-brown select-none p-4">
-                                  Usa los botones de arriba para crear personajes para tu cómic.
+                                  Haga clic en "Generate Comic" para crear un guion y sus personajes.
                                 </p>
                               )}
                             </div>
@@ -425,28 +454,151 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                       )}
                       {activeComicTab === 'scene' && (
                         <div className="space-y-4">
-                            <div>
-                              <div className="flex justify-between items-center mb-1">
-                                <label htmlFor="comic-scene" className="block text-xs font-medium text-condorito-brown select-none">Scene Description</label>
-                                <button onClick={onRandomizeComicScene} disabled={isRandomizingScene} className="p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Randomize Scene" title="Randomize Scene">
-                                    <DiceIcon className={`w-4 h-4 ${isRandomizingScene ? 'animate-spin' : ''}`} />
-                                </button>
-                              </div>
-                              <textarea id="comic-scene" value={comicScene} onChange={e => onComicSceneChange(e.target.value)} rows={4} className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white text-condorito-brown" placeholder="e.g., Two friends in a park" />
+                            <div className="flex gap-1 p-1 bg-panel-header rounded-lg">
+                                <SubTabButton label="Setup" active={sceneViewTab === 'setup'} onClick={() => setSceneViewTab('setup')} />
+                                <SubTabButton label="Página" active={sceneViewTab === 'page'} onClick={() => setSceneViewTab('page')} disabled={!narrativeScript} />
+                                <SubTabButton label="Viñeta" active={sceneViewTab === 'panel'} onClick={() => setSceneViewTab('panel')} disabled={!narrativeScript} />
                             </div>
-                             {comicMode === 'simple' && (
-                                <Slider 
-                                    label="Número de Páginas"
-                                    min={1}
-                                    max={20}
-                                    step={1}
-                                    value={numComicPages}
-                                    onChange={e => onNumComicPagesChange(Number(e.target.value))}
-                                />
+
+                            {sceneViewTab === 'setup' && (
+                                <div className="space-y-4 p-2 bg-panel-back rounded-lg">
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <label htmlFor="comic-scene" className="block text-xs font-medium text-condorito-brown select-none">Scene Description</label>
+                                            <button onClick={onRandomizeComicScene} disabled={isRandomizingScene} className="p-1 text-condorito-red rounded-full hover:bg-condorito-red/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Randomize Scene" title="Randomize Scene">
+                                                <DiceIcon className={`w-4 h-4 ${isRandomizingScene ? 'animate-spin' : ''}`} />
+                                            </button>
+                                        </div>
+                                        <textarea id="comic-scene" value={comicScene} onChange={e => onComicSceneChange(e.target.value)} rows={4} className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white text-condorito-brown" placeholder="e.g., Two friends in a park" />
+                                    </div>
+                                    {comicMode === 'simple' && (
+                                        <Slider 
+                                            label="Número de Páginas"
+                                            min={1}
+                                            max={20}
+                                            step={1}
+                                            value={numComicPages}
+                                            onChange={e => onNumComicPagesChange(Number(e.target.value))}
+                                        />
+                                    )}
+                                    <p className="text-xs text-condorito-brown/80 select-none">
+                                        Describe el lugar y la situación donde se desarrolla toda la tira cómica para mantener la coherencia del fondo.
+                                    </p>
+                                </div>
                             )}
-                            <p className="text-xs text-condorito-brown/80 select-none">
-                                Describe el lugar y la situación donde se desarrolla toda la tira cómica para mantener la coherencia del fondo.
-                            </p>
+                            
+                            {narrativeScript && sceneViewTab === 'page' && (
+                                <div className="space-y-3 p-2 bg-panel-back rounded-lg">
+                                  <label className="text-xs font-semibold text-condorito-brown select-none">Seleccionar Página</label>
+                                  <div className="flex gap-1 p-1 bg-panel-header rounded-lg overflow-x-auto">
+                                    {narrativeScript.pages.map((page, index) => (
+                                      <button key={page.pageNumber} onClick={() => onSelectedPageIndexChange(index)} className={`flex-shrink-0 px-3 py-1 text-xs font-semibold rounded-md transition-colors ${selectedPageIndex === index ? 'bg-white text-condorito-red shadow-sm' : 'hover:bg-panel-border'}`}>
+                                        P. {page.pageNumber}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-semibold text-condorito-brown select-none">Contexto de la Página</label>
+                                    <textarea
+                                      value={narrativeScript.pages[selectedPageIndex]?.context || ''}
+                                      onChange={e => handleScriptChange(selectedPageIndex, null, 'context', e.target.value)}
+                                      rows={4}
+                                      className="mt-1 w-full p-2 border border-panel-header rounded-md text-xs bg-white"
+                                    />
+                                  </div>
+                                </div>
+                            )}
+
+                            {narrativeScript && sceneViewTab === 'panel' && (
+                                <div className="space-y-3 p-2 bg-panel-back rounded-lg">
+                                  <label className="text-xs font-semibold text-condorito-brown select-none">Seleccionar Viñeta (P. {selectedPageIndex + 1})</label>
+                                  <div className="flex gap-1 p-1 bg-panel-header rounded-lg overflow-x-auto">
+                                    {narrativeScript.pages[selectedPageIndex]?.panels.map((panel, index) => (
+                                      <button key={panel.panelNumber} onClick={() => onSelectedPanelIndexChange(index)} className={`flex-shrink-0 px-3 py-1 text-xs font-semibold rounded-md transition-colors ${selectedPanelIndex === index ? 'bg-white text-condorito-red shadow-sm' : 'hover:bg-panel-border'}`}>
+                                        V. {panel.panelNumber}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  
+                                  {(() => {
+                                    const panel = narrativeScript.pages[selectedPageIndex]?.panels[selectedPanelIndex];
+                                    if (!panel) return <p className="text-xs text-center p-4">Seleccione una viñeta.</p>;
+
+                                    const fields: (keyof typeof panel)[] = ['description', 'emotion', 'shotType', 'techNotes', 'dynamicAlt'];
+
+                                    return (
+                                        <div className="space-y-3">
+                                            {fields.map(field => (
+                                                <div key={field}>
+                                                    <label className="text-xs font-semibold text-condorito-brown capitalize select-none">{String(field).replace(/([A-Z])/g, ' $1')}</label>
+                                                    <textarea
+                                                        value={panel[field] as string}
+                                                        onChange={e => handleScriptChange(selectedPageIndex, selectedPanelIndex, field, e.target.value)}
+                                                        rows={field === 'description' ? 3 : 2}
+                                                        className="mt-1 w-full p-2 border border-panel-header rounded-md text-xs bg-white"
+                                                    />
+                                                </div>
+                                            ))}
+
+                                            {/* Dialogue Editor */}
+                                            <div className="space-y-2 pt-2 border-t border-panel-header">
+                                                <h4 className="text-xs font-semibold text-condorito-brown">Diálogos</h4>
+                                                {panel.dialogues.map((dialogue, index) => (
+                                                    <div key={index} className="p-2 bg-panel-header rounded-md space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                          <select
+                                                              value={dialogue.characterId}
+                                                              onChange={e => handleScriptChange(selectedPageIndex, selectedPanelIndex, 'dialogues', Number(e.target.value), index, 'characterId')}
+                                                              className="flex-grow p-1 border border-panel-border rounded-md text-xs bg-white"
+                                                          >
+                                                            {characterProfiles.map((p, charIndex) => <option key={p.id} value={charIndex}>{richTextToString(p.name)}</option>)}
+                                                          </select>
+                                                          <button onClick={() => {
+                                                              const newDialogues = panel.dialogues.filter((_, i) => i !== index);
+                                                              handleScriptChange(selectedPageIndex, selectedPanelIndex, 'dialogues', newDialogues);
+                                                          }} className="p-1 text-condorito-red rounded-full hover:bg-red-100">&times;</button>
+                                                        </div>
+                                                        <textarea
+                                                            value={dialogue.text}
+                                                            onChange={e => handleScriptChange(selectedPageIndex, selectedPanelIndex, 'dialogues', e.target.value, index, 'text')}
+                                                            rows={2}
+                                                            className="w-full p-1 border border-panel-border rounded-md text-xs bg-white"
+                                                        />
+                                                    </div>
+                                                ))}
+                                                <button onClick={() => {
+                                                    const newDialogue: DialogueData = { characterId: 0, text: '' };
+                                                    const newDialogues = [...panel.dialogues, newDialogue];
+                                                    handleScriptChange(selectedPageIndex, selectedPanelIndex, 'dialogues', newDialogues);
+                                                }} className="w-full text-xs font-semibold text-condorito-green py-1 rounded-md hover:bg-green-100">+ Añadir Diálogo</button>
+                                            </div>
+                                            
+                                            {/* Characters in Panel Editor */}
+                                            <div className="space-y-1 pt-2 border-t border-panel-header">
+                                              <h4 className="text-xs font-semibold text-condorito-brown">Personajes en Viñeta</h4>
+                                              {characterProfiles.map((p, charIndex) => (
+                                                  <div key={p.id} className="flex items-center gap-2">
+                                                      <input
+                                                          type="checkbox"
+                                                          id={`char-in-panel-${p.id}`}
+                                                          checked={panel.charactersInPanel.includes(charIndex)}
+                                                          onChange={e => {
+                                                              const newChars = e.target.checked
+                                                                  ? [...panel.charactersInPanel, charIndex]
+                                                                  : panel.charactersInPanel.filter(id => id !== charIndex);
+                                                              handleScriptChange(selectedPageIndex, selectedPanelIndex, 'charactersInPanel', newChars.sort((a, b) => a - b));
+                                                          }}
+                                                          className="h-4 w-4 rounded border-panel-header text-condorito-red focus:ring-condorito-red"
+                                                      />
+                                                      <label htmlFor={`char-in-panel-${p.id}`} className="text-xs select-none">{richTextToString(p.name)}</label>
+                                                  </div>
+                                              ))}
+                                            </div>
+                                        </div>
+                                    );
+                                  })()}
+                                </div>
+                            )}
                         </div>
                       )}
                     </div>

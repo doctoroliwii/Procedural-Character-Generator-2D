@@ -1,0 +1,87 @@
+import type { ProceduralBackground } from '../types';
+
+export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
+  type: 'exterior',
+  
+  // Exterior
+  sky: {
+    topColor: '#87CEEB',
+    bottomColor: '#B0E0E6',
+    cloudDensity: 30,
+    cloudColor: '#FFFFFF',
+    cloudStyle: 'fluffy',
+    sunMoonVisible: true,
+    sunMoonPosition: { x: 80, y: 20 },
+    sunMoonColor: '#FFD700',
+    sunMoonSize: 50,
+    stars: false,
+    starDensity: 10,
+    starColor: '#FFFFFF',
+  },
+  ground: {
+    color: '#90EE90',
+    texture: 'grass',
+    textureScale: 100,
+    textureColor1: '#6B8E23',
+    textureColor2: '#9ACD32',
+    textureRotation: 0,
+  },
+  horizon: {
+    position: 60,
+    mountainsVisible: true,
+    mountainHeight: 40,
+    mountainColor: '#A9A9A9',
+    mountainLayers: 3,
+    mountainRoughness: 50,
+    treesVisible: false,
+    treeCount: 10,
+    treeSize: 80,
+    treeColor: '#228B22',
+    treeVariation: 50,
+    buildingsVisible: false,
+    buildingCount: 8,
+    buildingMinHeight: 100,
+    buildingMaxHeight: 250,
+    buildingColor: '#D3D3D3',
+    buildingWindows: true,
+  },
+  
+  // Interior
+  room: {
+    width: 600,
+    depth: 400,
+    height: 300,
+    wallColor: '#F5F5DC',
+    wallTexture: 'solid',
+    wallTextureScale: 100,
+    floorColor: '#DEB887',
+    floorTexture: 'wood',
+    floorTextureScale: 100,
+    ceilingVisible: true,
+    ceilingColor: '#FFFFFF',
+    ceilingTexture: 'solid',
+    baseboardVisible: true,
+    baseboardColor: '#A0522D',
+    baseboardHeight: 10,
+    cornerRadius: 5,
+  },
+  windows: [],
+  doors: [],
+  furniture: [],
+  
+  // Común
+  viewAngle: 0,
+  viewHeight: 0,
+  focalLength: 500,
+  ambientLight: 80,
+  ambientColor: '#FFFFFF',
+  shadows: true,
+  shadowIntensity: 50,
+  fogEnabled: false,
+  fogColor: '#FFFFFF',
+  fogDensity: 10,
+  
+  // Canvas
+  canvasWidth: 800,
+  canvasHeight: 600,
+};

@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 // FIX: Added import for Location type.
-import type { Lore, CharacterProfile, Story, Location, RichText } from '../types';
+import type { Lore, CharacterProfile, Story, Location, RichText, NarrativeScript } from '../types';
 
 // API key is automatically provided by the environment
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
@@ -24,115 +24,118 @@ const parseJsonResponse = (jsonText: string) => {
   }
 }
 
-// Defines the expected JSON structure for the simple comic script
-const simpleComicScriptSchema = {
+const narrativeScriptSchema = {
   type: Type.OBJECT,
   properties: {
-    totalUniqueCharacters: {
-      type: Type.INTEGER,
-      description: 'El número total de personajes únicos en todo el cómic.'
-    },
-    panels: {
+    theme: { type: Type.STRING },
+    scene: { type: Type.STRING },
+    characterList: {
       type: Type.ARRAY,
-      description: 'Un array de viñetas de cómic.',
+      description: "Una lista de los personajes únicos en la historia.",
       items: {
         type: Type.OBJECT,
-        required: ["panel", "description", "shotType", "charactersInPanel", "dialogues"],
         properties: {
-          panel: { type: Type.INTEGER, description: 'El número de la viñeta, comenzando desde 1.' },
-          description: { type: Type.STRING, description: 'Una descripción detallada de la escena, los personajes, su apariencia, pose y acción en esta viñeta.' },
-          shotType: { 
-            type: Type.STRING,
-            description: "El tipo de plano para la viñeta. Debe ser 'close-up' (cabeza y hombros), 'medium-shot' (de cintura para arriba), o 'full-shot' (cuerpo completo)."
-          },
-          charactersInPanel: { 
+          id: { type: Type.INTEGER, description: "ID basado en 0 del personaje." },
+          name: { type: Type.STRING },
+          description: { type: Type.STRING, description: "Breve descripción del personaje." }
+        },
+        required: ["id", "name", "description"]
+      }
+    },
+    pages: {
+      type: Type.ARRAY,
+      description: "Un array de páginas de cómic.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          pageNumber: { type: Type.INTEGER },
+          context: { type: Type.STRING },
+          panels: {
             type: Type.ARRAY,
-            description: 'Un array de IDs (basados en 0) para cada personaje único presente en esta viñeta.',
-            items: { type: Type.INTEGER }
-          },
-          dialogues: {
-            type: Type.ARRAY,
-            description: 'Una lista de diálogos en esta viñeta. Puede estar vacía.',
+            description: "Un array de viñetas dentro de esta página.",
             items: {
               type: Type.OBJECT,
-              required: ["characterId", "text"],
               properties: {
-                characterId: { type: Type.INTEGER, description: 'El ID (basado en 0) del personaje único que está hablando.' },
-                text: { type: Type.STRING, description: 'El texto del diálogo para el bocadillo.' }
-              }
+                panelNumber: { type: Type.INTEGER },
+                description: { type: Type.STRING },
+                emotion: { type: Type.STRING },
+                dialogues: {
+                  type: Type.ARRAY,
+                  description: "Diálogos en esta viñeta. Puede estar vacío.",
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      characterId: { type: Type.INTEGER, description: "ID basado en 0 del personaje que habla." },
+                      text: { type: Type.STRING }
+                    },
+                    required: ["characterId", "text"]
+                  }
+                },
+                shotType: { type: Type.STRING, description: "p. ej., 'plano general', 'plano medio', 'primer plano'." },
+                techNotes: { type: Type.STRING, description: "Instrucciones para el generador de fondos." },
+                dynamicAlt: { type: Type.STRING, description: "Una alternativa coherente para la viñeta." },
+                charactersInPanel: {
+                  type: Type.ARRAY,
+                  description: "Array de IDs (basados en 0) de los personajes en la viñeta.",
+                  items: { type: Type.INTEGER }
+                }
+              },
+              required: ["panelNumber", "description", "emotion", "dialogues", "shotType", "techNotes", "dynamicAlt", "charactersInPanel"]
             }
           }
-        }
+        },
+        required: ["pageNumber", "context", "panels"]
       }
     }
-  }
+  },
+  required: ["theme", "scene", "pages", "characterList"]
 };
 
-interface Dialogue {
-  characterId: number;
-  text: string;
-}
-
-interface PanelScript {
-  panel: number;
-  description: string;
-  shotType: 'close-up' | 'medium-shot' | 'full-shot';
-  charactersInPanel: number[];
-  dialogues: Dialogue[];
-}
-
-export interface ComicScript {
-  totalUniqueCharacters: number;
-  panels: PanelScript[];
-}
-
-export const generateComicScript = async (theme: string, numPanels: number, language: string, numCharacters?: number, scene?: string, isSequential: boolean = false): Promise<ComicScript> => {
-  const languageMap: Record<string, string> = {
-    es: 'español',
-    en: 'inglés',
-    ja: 'japonés',
-    zh: 'chino',
-    ru: 'ruso',
-    hi: 'hindi',
-  };
+export const generateComicScript = async (theme: string, scene: string, numPages: number, language: string, numCharacters: number, characterNames: string[] = []): Promise<NarrativeScript> => {
+  const languageMap: Record<string, string> = { es: 'español', en: 'inglés', ja: 'japonés', zh: 'chino', ru: 'ruso', hi: 'hindi' };
   const languageName = languageMap[language] || 'español';
+  const characterNamesPrompt = characterNames.length > 0 ? `Usa estos nombres de personaje: ${characterNames.join(', ')}.` : 'Inventa nombres para los personajes.';
 
-  const characterConstraint = numCharacters
-    ? `El guion debe tener exactamente ${numCharacters} personajes únicos.`
-    : 'Primero, decide cuántos personajes únicos hay en toda la historia (totalUniqueCharacters).';
+  const prompt = `Eres un guionista estructural de cómics en ${languageName}.
+Tu tarea es generar un guion narrativo por página y por viñeta.
+El guion debe tener una narrativa estructurada con coherencia visual y técnica.
+Debe haber exactamente ${numCharacters} personajes únicos en toda la historia.
+${characterNamesPrompt}
 
-  const sceneInstruction = scene ? `Toda la historia debe transcurrir en la siguiente escena: "${scene}". Mantén la coherencia visual del fondo en todas las viñetas.` : '';
+Parámetros de entrada:
+- theme: "${theme}"
+- scene: "${scene}"
+- pages: ${numPages}
 
-  const storyInstruction = isSequential
-    ? `Crea un guion para una HISTORIA DE CÓMIC SECUENCIAL en ${languageName} de ${numPanels} viñetas en total. La historia debe tener un principio, un desarrollo y un final claros, y debe ser una trama continua a lo largo de todas las viñetas.`
-    : `Crea un guion de cómic corto de ${numPanels} viñetas en ${languageName}.`;
+Instrucciones creativas:
+- Cada página es un bloque narrativo (inicio, desarrollo, desenlace parcial).
+- Cada viñeta es una unidad de acción o diálogo. Usa humor y ritmo.
+- La historia debe ser continua a lo largo de las páginas si 'pages' > 1.
 
-  const themeInstruction = `La historia debe basarse en el siguiente tema: "${theme}".`;
+Contenido de cada viñeta:
+- description: Qué se ve (acción visual concreta).
+- emotion: Tono o sentimiento dominante.
+- dialogues: Un array de objetos de diálogo. Cada objeto debe tener 'characterId' (un entero basado en 0, de 0 a ${numCharacters - 1}) y 'text'. Asigna los diálogos a los personajes de forma coherente.
+- shotType: Tipo de plano sugerido (p. ej., 'plano general', 'plano medio', 'primer plano', 'detalle', 'plano americano').
+- techNotes: Instrucciones para el generador de fondo IA (p. ej., "Horizonte bajo, 25% superior despejado para cielo.").
+- dynamicAlt: Una alternativa dinámica y coherente para la viñeta.
+- charactersInPanel: Un array con los 'characterId' de todos los personajes presentes en la viñeta, incluso si no hablan.
 
-  const prompt = `${storyInstruction}
-  ${themeInstruction}
-  ${characterConstraint}
-  ${sceneInstruction}
-  El guion debe ser coherente, con personajes consistentes a lo largo de las viñetas.
-  Para cada viñeta:
-  1.  Describe la escena, la apariencia de los personajes, sus poses y sus acciones.
-  2.  Determina el tipo de plano (shotType) para la viñeta para enfocar la acción. Las opciones son: 'close-up' (enfoca en la cara y hombros, para diálogos o emociones), 'medium-shot' (muestra de la cintura para arriba, bueno para interacciones), o 'full-shot' (muestra el cuerpo completo, para establecer la escena o mostrar acción).
-  3.  Especifica qué personajes únicos están en la viñeta usando sus IDs (basados en 0) en el array 'charactersInPanel'.
-  4.  Escribe los diálogos. Para cada diálogo, usa el 'characterId' del personaje único que habla. Asegúrate de que este ID corresponda a un personaje presente en 'charactersInPanel'.
-  5.  El texto del diálogo debe ser corto y conciso para que quepa en un bocadillo.
-  Proporciona la salida en formato JSON.`;
+Formato de Salida:
+- La salida debe ser un único objeto JSON que se ajuste al esquema proporcionado.
+- El JSON debe tener una clave 'pages' que sea un array de ${numPages} objetos de página.
+- Además, incluye una clave 'characterList' en el objeto JSON principal. Debe ser un array de objetos, donde cada objeto representa un personaje único y contiene 'id' (entero basado en 0), 'name' (string) y 'description' (una breve descripción de su apariencia o personalidad). El número de personajes en esta lista debe coincidir con ${numCharacters}.
+- El theme y scene de entrada deben reflejarse en el JSON.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-pro",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
-        responseSchema: simpleComicScriptSchema,
+        responseSchema: narrativeScriptSchema,
       },
     });
-
-    // FIX: Replaced brittle JSON parsing with robust helper function.
     return parseJsonResponse(response.text);
   } catch (error) {
     console.error("Error generating comic script:", error);
@@ -426,39 +429,49 @@ export const generateStory = async (lore: Lore, characters: CharacterProfile[], 
     return parseJsonResponse(response.text);
 };
 
-export const generateComicScriptFromStory = async (story: Story, lore: Lore, characters: CharacterProfile[], numPanels: number, language: string, scene?: string): Promise<ComicScript> => {
+export const generateComicScriptFromStory = async (story: Story, lore: Lore, characters: CharacterProfile[], numPanels: number, language: string, scene: string): Promise<NarrativeScript> => {
     const characterMap = new Map(characters.map(c => [c.id, c]));
     const charactersInStory = story.characterProfileIds.map(id => characterMap.get(id)).filter(Boolean) as CharacterProfile[];
     const characterSummaries = charactersInStory.map((c, index) => `ID ${index}: ${richTextToString(c.name)}. PSICOLOGÍA: ${richTextToString(c.psychology.virtues)}, ${richTextToString(c.psychology.flaws)}.`).join('\n');
-    const sceneInstruction = scene ? `Toda la historia debe transcurrir en la siguiente escena: "${scene}". Mantén la coherencia visual del fondo en todas las viñetas.` : '';
+    const languageMap: Record<string, string> = { es: 'español', en: 'inglés', ja: 'japonés', zh: 'chino', ru: 'ruso', hi: 'hindi' };
+    const languageName = languageMap[language] || 'español';
 
-    const prompt = `Eres un guionista de cómics experto.
+    const prompt = `Eres un guionista estructural de cómics en ${languageName}.
+    Tu tarea es adaptar la siguiente historia a un guion de cómic de una sola página con ${numPanels} viñetas.
+
     UNIVERSO: ${richTextToString(lore.genre)}. ${richTextToString(lore.rules)}
-    ${sceneInstruction}
+    ESCENA: "${scene}"
     PERSONAJES:
     ${characterSummaries}
     
     HISTORIA A ADAPTAR (en 8 pasos):
     ${story.storyCircle.map(s => `${s.step}. ${s.title}: ${s.description}`).join('\n')}
     
-    TAREA: Adapta esta historia a un guion de cómic de ${numPanels} viñetas en ${language}.
-    El guion debe ser coherente, con personajes consistentes a lo largo de las viñetas.
-    El campo 'totalUniqueCharacters' debe ser ${charactersInStory.length}.
-    Distribuye los 8 pasos de la historia de forma lógica a lo largo de las viñetas.
-    Para cada viñeta:
-    1.  Describe la escena, la apariencia de los personajes, sus poses y sus acciones.
-    2.  Determina el tipo de plano (shotType) para la viñeta para enfocar la acción. Las opciones son: 'close-up' (enfoca en la cara y hombros, para diálogos o emociones), 'medium-shot' (muestra de la cintura para arriba, bueno para interacciones), o 'full-shot' (muestra el cuerpo completo, para establecer la escena o mostrar acción).
-    3.  Especifica qué personajes únicos están en la viñeta usando sus IDs (basados en 0) en el array 'charactersInPanel'.
-    4.  Escribe los diálogos. Para cada diálogo, usa el 'characterId' del personaje único que habla. Asegúrate de que este ID corresponda a un personaje presente en 'charactersInPanel'.
-    5.  El texto del diálogo debe ser corto y conciso para que quepa en un bocadillo.
-    La salida debe ser un objeto JSON que se ajuste al esquema proporcionado.`;
+    TAREA:
+    - Adapta la historia a un guion de ${numPanels} viñetas. Distribuye los 8 pasos de la historia de forma lógica.
+    - El guion debe ser coherente, con personajes consistentes.
+    - Debe haber exactamente ${charactersInStory.length} personajes únicos en toda la historia.
+    
+    Contenido de cada viñeta:
+    - description: Qué se ve (acción visual concreta).
+    - emotion: Tono o sentimiento dominante.
+    - dialogues: Un array de objetos de diálogo. Cada objeto debe tener 'characterId' (un entero basado en 0) y 'text'. Asigna los diálogos a los personajes de forma coherente.
+    - shotType: Tipo de plano sugerido (p. ej., 'plano general', 'plano medio').
+    - techNotes: Instrucciones para el generador de fondo IA (p. ej., "Horizonte bajo, 25% superior despejado.").
+    - dynamicAlt: Una alternativa dinámica y coherente para la viñeta.
+    - charactersInPanel: Un array con los 'characterId' de todos los personajes presentes en la viñeta.
+
+    Formato de Salida:
+    - La salida debe ser un único objeto JSON que se ajuste al esquema proporcionado.
+    - El JSON debe tener una clave 'pages' que sea un array con UNA SOLA página.
+    - El theme y scene de entrada deben reflejarse en el JSON.`;
 
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-pro",
         contents: prompt,
         config: {
             responseMimeType: "application/json",
-            responseSchema: simpleComicScriptSchema,
+            responseSchema: narrativeScriptSchema,
         },
     });
     return parseJsonResponse(response.text);

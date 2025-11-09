@@ -7,6 +7,7 @@ interface MenuBarProps {
   onNewComic: () => void;
   onNewUniverse: () => void;
   onNewProject: () => void;
+  onNewBackground: () => void;
   onRandomize: () => void;
   onRandomizeComic: () => void;
   isRandomizingComic: boolean;
@@ -16,12 +17,13 @@ interface MenuBarProps {
   onExportComic: (mode: 'current' | 'batch') => void;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onNewCharacter, onNewComic, onNewUniverse, onNewProject, onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport, onExportComic }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ onNewCharacter, onNewComic, onNewUniverse, onNewProject, onNewBackground, onRandomize, onRandomizeComic, isRandomizingComic, onMenuItemClick, handleImport, handleExport, onExportComic }) => {
   const newItems = [
     { label: 'Nuevo Proyecto', action: onNewProject },
     { label: 'Nuevo Universo', action: onNewUniverse },
     { label: 'Nuevo Personaje', action: onNewCharacter },
     { label: 'Nuevo Cómic', action: onNewComic },
+    { label: 'Nuevo Fondo', action: onNewBackground },
   ];
 
   const fileItems = [
@@ -64,6 +66,9 @@ const MenuBar: React.FC<MenuBarProps> = ({ onNewCharacter, onNewComic, onNewUniv
   const comicItems = [
     { label: 'Editor de Cómics', action: () => onMenuItemClick('Comic') }
   ];
+  const backgroundItems = [
+    { label: 'Editor de Fondos', action: () => onMenuItemClick('BackgroundEditor') }
+  ];
   const viewItems = [{ label: 'Opciones', action: () => onMenuItemClick('Options') }];
 
   return (
@@ -81,6 +86,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ onNewCharacter, onNewComic, onNewUniv
       <Menu title="Universo" items={universeItems} />
       <Menu title="Personajes" items={characterItems} />
       <Menu title="Cómics" items={comicItems} />
+      <Menu title="Fondos" items={backgroundItems} />
       <Menu title="View" items={viewItems} />
     </header>
   );
