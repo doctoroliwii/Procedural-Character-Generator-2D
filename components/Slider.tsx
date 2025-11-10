@@ -19,7 +19,7 @@ const Slider: React.FC<SliderProps> = ({ label, min, max, step, value, onChange,
           {label}
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-condorito-red font-mono bg-panel-header px-2 py-0.5 rounded text-xs">{value}</span>
+          <span className="text-condorito-red font-mono bg-panel-header px-2 py-0.5 rounded text-xs select-none">{value}</span>
           {onRandomize && (
             <button
                 onClick={onRandomize}

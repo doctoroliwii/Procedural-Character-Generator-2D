@@ -36,6 +36,7 @@ export interface GroundParams {
 // Parámetros del horizonte
 export interface HorizonParams {
   position: number; // 0-100 percentage from top
+  vanishingPointX: number; // 0-100 percentage from left
   
   // Montañas
   mountainsVisible: boolean;
@@ -58,6 +59,13 @@ export interface HorizonParams {
   buildingMaxHeight: number; // 100-400
   buildingColor: string;
   buildingWindows: boolean;
+
+  // Casas
+  housesVisible: boolean;
+  houseCount: number; // 2-10
+  houseSize: number; // 20-80
+  houseColor: string;
+  houseColorVariation: number; // 0-100
 }
 
 // Parámetros de habitación 3D
@@ -169,6 +177,13 @@ export interface ProceduralBackground {
   fogColor: string;
   fogDensity: number; // 0-100
   
+  // Rejilla
+  gridVisible: boolean;
+  gridColor: string;
+  gridDensity: number; // 1-50
+  gridStrokeWidth: number;
+  gridHorizonFade: number; // 0-100
+
   // Canvas
   canvasWidth: number; // default 800
   canvasHeight: number; // default 600

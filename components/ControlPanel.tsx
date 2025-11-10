@@ -533,7 +533,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                                                     <label className="text-xs font-semibold text-condorito-brown capitalize select-none">{String(field).replace(/([A-Z])/g, ' $1')}</label>
                                                     <textarea
                                                         value={panel[field] as string}
-                                                        onChange={e => handleScriptChange(selectedPageIndex, selectedPanelIndex, field, e.target.value)}
+                                                        onChange={e => handleScriptChange(selectedPageIndex, selectedPanelIndex, String(field), e.target.value)}
                                                         rows={field === 'description' ? 3 : 2}
                                                         className="mt-1 w-full p-2 border border-panel-header rounded-md text-xs bg-white"
                                                     />

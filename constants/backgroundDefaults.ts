@@ -28,6 +28,7 @@ export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
   },
   horizon: {
     position: 60,
+    vanishingPointX: 50,
     mountainsVisible: true,
     mountainHeight: 40,
     mountainColor: '#A9A9A9',
@@ -44,6 +45,11 @@ export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
     buildingMaxHeight: 250,
     buildingColor: '#D3D3D3',
     buildingWindows: true,
+    housesVisible: false,
+    houseCount: 5,
+    houseSize: 50,
+    houseColor: '#D2B48C',
+    houseColorVariation: 20,
   },
   
   // Interior
@@ -80,6 +86,13 @@ export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
   fogEnabled: false,
   fogColor: '#FFFFFF',
   fogDensity: 10,
+
+  // Rejilla
+  gridVisible: true,
+  gridColor: 'rgba(0, 0, 0, 0.4)',
+  gridDensity: 3,
+  gridStrokeWidth: 1.8,
+  gridHorizonFade: 20,
   
   // Canvas
   canvasWidth: 800,

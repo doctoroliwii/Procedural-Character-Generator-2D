@@ -6,9 +6,10 @@ interface WelcomeModalProps {
     onNewComic: () => void;
     onNewUniverse: () => void;
     onNewProject: () => void;
+    onNewBackground: () => void;
 }
 
-const WelcomeModal: React.FC<WelcomeModalProps> = ({ onNewCharacter, onNewComic, onNewUniverse, onNewProject }) => {
+const WelcomeModal: React.FC<WelcomeModalProps> = ({ onNewCharacter, onNewComic, onNewUniverse, onNewProject, onNewBackground }) => {
     return (
         <div className="absolute inset-0 z-[200] flex items-center justify-center bg-condorito-brown/60 backdrop-blur-sm">
             <div className="bg-panel-back rounded-xl shadow-2xl p-8 max-w-lg w-full text-center border border-panel-header">
@@ -38,6 +39,12 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ onNewCharacter, onNewComic,
                         className="p-4 bg-condorito-wood text-white font-semibold rounded-lg hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-condorito-wood transition-transform transform hover:scale-105 text-sm"
                     >
                         Nuevo Cómic
+                    </button>
+                    <button 
+                        onClick={onNewBackground}
+                        className="p-4 bg-sky-500 text-white font-semibold rounded-lg hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-transform transform hover:scale-105 text-sm col-span-2"
+                    >
+                        Nuevo Fondo
                     </button>
                 </div>
                 <div className="mt-10 text-center">

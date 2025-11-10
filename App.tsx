@@ -1342,6 +1342,7 @@ function App() {
           onNewComic={handleNewComic}
           onNewUniverse={handleNewUniverse}
           onNewProject={handleNewProject}
+          onNewBackground={handleNewBackground}
         />
       )}
       {apiError && (
