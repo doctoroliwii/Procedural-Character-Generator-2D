@@ -78,9 +78,9 @@ export const PARAM_CONFIGS: Record<Exclude<CharacterParamKey, 'bodyOutlines' | '
   eyeSpacingRatio: { min: 15, max: 45, step: 1, label: 'Eye Spacing' },
   pupilSizeRatio: { min: 20, max: 70, step: 1, label: 'Pupil Size' },
   // FIX: Corrected typo from upperEylidCoverage to upperEyelidCoverage
-  upperEyelidCoverage: { min: 0, max: 100, step: 1, label: 'Upper Eyelid' },
+  upperEyelidCoverage: { min: 0, max: 50, step: 1, label: 'Upper Eyelid' },
   // FIX: Corrected typo from lowerEylidCoverage to lowerEyelidCoverage
-  lowerEyelidCoverage: { min: 0, max: 100, step: 1, label: 'Lower Eyelid' },
+  lowerEyelidCoverage: { min: 0, max: 50, step: 1, label: 'Lower Eyelid' },
   eyelashCount: { min: 2, max: 8, step: 1, label: 'Eyelash Count' },
   eyelashLength: { min: 5, max: 25, step: 1, label: 'Eyelash Length' },
   eyelashAngle: { min: -30, max: 60, step: 1, label: 'Eyelash Angle' },

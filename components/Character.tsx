@@ -318,7 +318,55 @@ const Character: React.FC<{
         features.sort((a, b) => a.z - b.z);
 
         const getEyeClipPathData = (eyeX: number, eyeRx: number, eyeRy: number) => {
-          if (eyeStyle === 'realistic') { const leftPointX = eyeX - eyeRx; const rightPointX = eyeX + eyeRx; const verticalCenterY = eyeYPos; const upperControlY = (eyeYPos - eyeRy) + (2 * eyeRy * upperEyelidCoverage) / 100; const lowerControlY = (eyeYPos + eyeRy) - (2 * eyeRy * lowerEyelidCoverage) / 100; if (upperControlY >= lowerControlY) { const midY = (upperControlY + lowerControlY) / 2; return `M ${leftPointX},${midY} L ${rightPointX},${midY} Z`; } return `M ${leftPointX},${verticalCenterY} Q ${eyeX},${upperControlY} ${rightPointX},${verticalCenterY} Q ${eyeX},${lowerControlY} ${leftPointX},${verticalCenterY} Z`; } else { const eyeTopY = eyeYPos - eyeRy; const eyeBottomY = eyeYPos + eyeRy; const getXforY = (y: number) => { const y_clamped = Math.max(eyeTopY, Math.min(eyeBottomY, y)); const y_term = (y_clamped - eyeYPos) / eyeRy; const x_offset_sq = Math.max(0, 1 - y_term * y_term); const x_offset = eyeRx * Math.sqrt(x_offset_sq); return { x1: eyeX - x_offset, x2: eyeX + x_offset }; }; let upperLidY = eyeTopY + 2 * eyeRy * (Math.min(upperEyelidCoverage, 100) / 100) * 0.5; let lowerLidY = eyeBottomY - 2 * eyeRy * (Math.min(lowerEyelidCoverage, 100) / 100) * 0.5; if (upperLidY >= lowerLidY) { const midY = (upperLidY + lowerLidY) / 2; const midPoints = getXforY(midY); return `M ${midPoints.x1},${midY} L ${midPoints.x2},${midY} Z`; } const hasUpperLid = upperEyelidCoverage > 0.1; const hasLowerLid = lowerEyelidCoverage > 0.1; const upperPoints = getXforY(upperLidY); const lowerPoints = getXforY(lowerLidY); let path = `M ${upperPoints.x1} ${upperLidY}`; if (hasUpperLid) { path += ` L ${upperPoints.x2} ${upperLidY}`; } else { path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${upperPoints.x2} ${upperLidY}`; } path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${lowerPoints.x2} ${lowerLidY}`; if (hasLowerLid) { path += ` L ${lowerPoints.x1} ${lowerLidY}`; } else { path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${lowerPoints.x1} ${lowerLidY}`; } path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${upperPoints.x1} ${upperLidY} Z`; return path; }
+          if (eyeStyle === 'realistic') { const leftPointX = eyeX - eyeRx; const rightPointX = eyeX + eyeRx; const verticalCenterY = eyeYPos; const upperControlY = (eyeYPos - eyeRy) + (2 * eyeRy * upperEyelidCoverage) / 100; const lowerControlY = (eyeYPos + eyeRy) - (2 * eyeRy * lowerEyelidCoverage) / 100; if (upperControlY >= lowerControlY) { const midY = (upperControlY + lowerControlY) / 2; return `M ${leftPointX},${midY} L ${rightPointX},${midY} Z`; } return `M ${leftPointX},${verticalCenterY} Q ${eyeX},${upperControlY} ${rightPointX},${verticalCenterY} Q ${eyeX},${lowerControlY} ${leftPointX},${verticalCenterY} Z`; 
+          } else { // Blocky style
+            const eyeTopY = eyeYPos - eyeRy;
+            const eyeBottomY = eyeYPos + eyeRy;
+
+            // Helper to find the x-coordinates on the ellipse for a given y
+            const getXforY = (y: number) => {
+                const y_clamped = Math.max(eyeTopY, Math.min(eyeBottomY, y));
+                const y_term = (y_clamped - eyeYPos) / eyeRy;
+                const x_offset_sq = Math.max(0, 1 - y_term * y_term);
+                const x_offset = eyeRx * Math.sqrt(x_offset_sq);
+                return { x1: eyeX - x_offset, x2: eyeX + x_offset };
+            };
+            
+            // With max set to 50, coverage of 50 should close lid to the center.
+            const upperLidY = eyeTopY + (eyeRy * (upperEyelidCoverage / 50));
+            const lowerLidY = eyeBottomY - (eyeRy * (lowerEyelidCoverage / 50));
+
+            if (upperLidY >= lowerLidY) {
+                const midY = (upperLidY + lowerLidY) / 2;
+                const { x1, x2 } = getXforY(midY);
+                return `M ${x1},${midY} L ${x2},${midY} Z`;
+            }
+
+            const hasUpperLid = upperEyelidCoverage > 0.1;
+            const hasLowerLid = lowerEyelidCoverage > 0.1;
+            const upperPoints = getXforY(upperLidY);
+            const lowerPoints = getXforY(lowerLidY);
+
+            let path = `M ${upperPoints.x1} ${upperLidY}`;
+            
+            if (hasUpperLid) {
+                path += ` L ${upperPoints.x2} ${upperLidY}`;
+            } else {
+                path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${upperPoints.x2} ${upperLidY}`;
+            }
+
+            path += ` A ${eyeRx} ${eyeRy} 0 0 0 ${lowerPoints.x2} ${lowerLidY}`; // Right side arc, sweep-flag 0
+            
+            if (hasLowerLid) {
+                path += ` L ${lowerPoints.x1} ${lowerLidY}`;
+            } else {
+                path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${lowerPoints.x1} ${lowerLidY}`;
+            }
+
+            path += ` A ${eyeRx} ${eyeRy} 0 0 0 ${upperPoints.x1} ${upperLidY} Z`; // Left side arc, sweep-flag 0
+            
+            return path;
+        }
         };
         const renderHead = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; const hW = headWidth / 2; const hH = headHeight / 2; switch (headShape) { case 'circle': return <ellipse cx={dynamicCenterX} cy={headY} rx={hW} ry={hW} {...props} />; case 'square': return <rect x={dynamicCenterX - hW} y={headY - hW} width={headWidth} height={headWidth} rx={headCornerRadius} {...props} />; case 'triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX, y: headY-hH}, {x: dynamicCenterX - hW, y: headY+hH}, {x: dynamicCenterX + hW, y: headY+hH}], triangleCornerRadius)} {...props} />; case 'inverted-triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX - hW, y: headY-hH}, {x: dynamicCenterX + hW, y: headY-hH}, {x: dynamicCenterX, y: headY+hH}], triangleCornerRadius)} {...props} />; default: return <ellipse cx={dynamicCenterX} cy={headY} rx={hW} ry={hH} {...props} />; } };
         const renderTorso = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; const tW = torsoWidth / 2; const tH = torsoHeight / 2; const torsoCY = torsoTopY + tH; switch (torsoShape) { case 'circle': return <ellipse cx={dynamicCenterX} cy={torsoCY} rx={tW} ry={tH} {...props} />; case 'square': return <rect x={dynamicCenterX - tW} y={torsoTopY} width={torsoWidth} height={torsoWidth} rx={torsoCornerRadius} {...props} />; case 'triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX, y: torsoTopY}, {x: dynamicCenterX-tW, y: torsoTopY+torsoHeight}, {x: dynamicCenterX+tW, y: torsoTopY+torsoHeight}], triangleCornerRadius)} {...props} />; case 'inverted-triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX-tW, y: torsoTopY}, {x: dynamicCenterX+tW, y: torsoTopY}, {x: dynamicCenterX, y: torsoTopY+torsoHeight}], triangleCornerRadius)} {...props} />; default: return <rect x={dynamicCenterX - tW} y={torsoTopY} width={torsoWidth} height={torsoHeight} rx={torsoCornerRadius} {...props} />; } };

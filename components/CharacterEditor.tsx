@@ -592,7 +592,6 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
                                 canvasResetToken={0}
                                 viewBox={viewBox}
                                 onViewBoxChange={setViewBox}
-                                currentPage={0} totalPages={0} onNextPage={() => {}} onPrevPage={() => {}}
                             />
                             <ZoomControls
                                 onZoomIn={() => handleZoom(1.2)}

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 // FIX: Add missing import for BackgroundOptions
 import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions, NarrativeScript, DialogueData, ProceduralBackground } from '../types';
@@ -34,6 +35,10 @@ interface ControlPanelProps {
   onNumComicPanelsChange: (value: number) => void;
   numComicPages: number;
   onNumComicPagesChange: (value: number) => void;
+  useNanoBananaOnly: boolean;
+  onUseNanoBananaOnlyChange: (value: boolean) => void;
+  useProceduralBackgrounds: boolean;
+  onUseProceduralBackgroundsChange: (value: boolean) => void;
   comicAspectRatio: '1:1' | '16:9' | '9:16';
   onComicAspectRatioChange: (value: '1:1' | '16:9' | '9:16') => void;
   minComicFontSize: number;
@@ -182,7 +187,7 @@ const CharacterListItem: React.FC<CharacterListItemProps> = ({
 
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { 
-    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
+    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, useNanoBananaOnly, onUseNanoBananaOnlyChange, useProceduralBackgrounds, onUseProceduralBackgroundsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
     // Narrative props
     lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, isGeneratingSimpleCharacters, onRegenerateCharacterName, onRandomizeCharacterAppearance, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
     setApiError, onGenerateProject,
@@ -381,6 +386,14 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                                 </button>
                               </div>
                               <Slider label="Panels" min={1} max={6} step={1} value={numComicPanels} onChange={e => onNumComicPanelsChange(Number(e.target.value))} />
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-panel-header">
+                                <label htmlFor="nano-banana-only" className="font-medium text-condorito-brown select-none text-xs">Only Nano Banana</label>
+                                <input type="checkbox" id="nano-banana-only" checked={useNanoBananaOnly} onChange={e => onUseNanoBananaOnlyChange(e.target.checked)} className="h-5 w-5 rounded-md border-panel-header text-condorito-red focus:ring-condorito-red/80 cursor-pointer" />
+                              </div>
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-panel-header">
+                                <label htmlFor="procedural-bg-only" className="font-medium text-condorito-brown select-none text-xs">Only Procedural Background</label>
+                                <input type="checkbox" id="procedural-bg-only" checked={useProceduralBackgrounds} onChange={e => onUseProceduralBackgroundsChange(e.target.checked)} className="h-5 w-5 rounded-md border-panel-header text-condorito-red focus:ring-condorito-red/80 cursor-pointer" />
+                              </div>
                             </>
                           ) : (
                             <div className="text-center space-y-3 p-2">

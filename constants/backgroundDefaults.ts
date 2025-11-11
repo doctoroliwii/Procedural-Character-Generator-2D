@@ -7,6 +7,7 @@ export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
   sky: {
     topColor: '#87CEEB',
     bottomColor: '#B0E0E6',
+    cloudsVisible: true,
     cloudDensity: 30,
     cloudColor: '#FFFFFF',
     cloudStyle: 'fluffy',
@@ -47,7 +48,10 @@ export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
     buildingWindows: true,
     housesVisible: false,
     houseCount: 5,
-    houseSize: 50,
+    houseWidthMin: 0.8,
+    houseWidthMax: 1.2,
+    houseHeightMin: 0.7,
+    houseHeightMax: 1.5,
     houseColor: '#D2B48C',
     houseColorVariation: 20,
   },
@@ -74,6 +78,7 @@ export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
   windows: [],
   doors: [],
   furniture: [],
+  walls: [],
   
   // Común
   viewAngle: 0,
@@ -88,11 +93,28 @@ export const INITIAL_BACKGROUND: Omit<ProceduralBackground, 'id' | 'name'> = {
   fogDensity: 10,
 
   // Rejilla
-  gridVisible: true,
-  gridColor: 'rgba(0, 0, 0, 0.4)',
   gridDensity: 3,
-  gridStrokeWidth: 1.8,
-  gridHorizonFade: 20,
+  gridColor: 'rgba(0, 0, 0, 0.4)',
+  gridPerspective: {
+    visible: true,
+    strokeWidth: 1.8,
+    horizonFade: 20,
+  },
+  gridHorizontal: {
+    visible: true,
+    strokeWidth: 1.8,
+    horizonFade: 20,
+  },
+  gridVerticals: {
+    visible: true,
+    strokeWidth: 1.8,
+    horizonFade: 20,
+  },
+
+  // Vértices de la rejilla
+  gridVerticesVisible: false,
+  gridVertexColor: '#ff4d4d',
+  gridVertexRadius: 3,
   
   // Canvas
   canvasWidth: 800,

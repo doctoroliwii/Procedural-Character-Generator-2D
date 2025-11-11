@@ -1,12 +1,14 @@
+
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment, Project, NarrativeScript, NarrativePanelScript, ProceduralBackground } from './types';
+import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment, Project, NarrativeScript, NarrativePanelScript, ProceduralBackground, NarrativePageScript } from './types';
 import { INITIAL_PARAMS, PARAM_CONFIGS } from './constants';
 import { INITIAL_BACKGROUND } from './constants/backgroundDefaults';
 import CharacterCanvas from './components/CharacterCanvas';
 import ControlPanel, { PanelKey, PanelState } from './components/ControlPanel';
 import MenuBar from './components/MenuBar';
 import WelcomeModal from './components/WelcomeModal';
-import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, generatePanelBackground, generateFullCharacterProfile, generateCharacterName, generateSceneDescription, generateVariantPanelBackground } from './services/geminiService';
+import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, generatePanelBackground, generateFullCharacterProfile, generateCharacterName, generateSceneDescription, generateVariantPanelBackground, generateFullComicPanelImage } from './services/geminiService';
 import { CloseIcon, WarningIcon } from './components/icons';
 import { generateRandomParams, generateRandomAppearanceParams } from './services/characterGenerationService';
 import StatusBar from './components/StatusBar';
@@ -179,6 +181,8 @@ function App() {
   const [comicScene, setComicScene] = useState('Dos amigos conversando en un parque con la cordillera de los Andes de fondo');
   const [numComicPanels, setNumComicPanels] = useState(4);
   const [numComicPages, setNumComicPages] = useState(1);
+  const [useNanoBananaOnly, setUseNanoBananaOnly] = useState(false);
+  const [useProceduralBackgrounds, setUseProceduralBackgrounds] = useState(false);
   
   // Shared Comic state
   const [comicPanels, setComicPanels] = useState<ComicPanelData[] | null>(null);
@@ -216,7 +220,7 @@ function App() {
   const [proceduralBackgrounds, setProceduralBackgrounds] = useState<ProceduralBackground[]>([]);
   const [selectedBackgroundId, setSelectedBackgroundId] = useState<string | null>(null);
 
-  const comicCanvasRef = useRef<{ export: (pageNumber?: number) => void }>(null);
+  const comicCanvasRef = useRef<{ export: (pageNumber?: number) => Promise<void> }>(null);
 
 
   const [panels, setPanels] = useState<Record<PanelKey, PanelState>>({
@@ -229,6 +233,16 @@ function App() {
     TrendingTheme: { isOpen: false, position: { x: 250, y: 40 }, zIndex: 1 },
     ProjectSettings: { isOpen: false, position: { x: 40, y: 40 }, zIndex: 1 },
   });
+
+  const handleUseNanoBananaOnlyChange = (value: boolean) => {
+    setUseNanoBananaOnly(value);
+    if (value) setUseProceduralBackgrounds(false);
+  };
+
+  const handleUseProceduralBackgroundsChange = (value: boolean) => {
+    setUseProceduralBackgrounds(value);
+    if (value) setUseNanoBananaOnly(false);
+  };
 
   const openPanel = useCallback((key: PanelKey) => {
     setPanels(prev => {
@@ -505,7 +519,7 @@ function App() {
     return newParams;
   };
 
-  const processComicScript = useCallback(async (panels: NarrativePanelScript[], characterParamsList: CharacterParams[]): Promise<ComicPanelData[]> => {
+  const processComicScript = useCallback(async (panels: NarrativePanelScript[], characterParamsList: CharacterParams[], proceduralBackground?: ProceduralBackground): Promise<ComicPanelData[]> => {
       const newPanels: ComicPanelData[] = [];
       const panelLayouts = generatePanelLayouts(panels.length);
 
@@ -522,7 +536,7 @@ function App() {
       }
 
       let backgroundImages: string[] = [];
-      if (panels.length > 0) {
+      if (!proceduralBackground && panels.length > 0) {
         // 1. Generate the first panel's background to use as a reference.
         const firstBg = await generatePanelBackground(panels[0].techNotes || panels[0].description);
         
@@ -558,10 +572,108 @@ function App() {
             panelCharacters[1].lookAt = { x: -9999, y: headY };
         }
         
-        newPanels.push({ id: `panel-${i}-${Date.now()}`, layout, characters: panelCharacters, characterIdsInPanel: panelScript.charactersInPanel, dialogues: panelScript.dialogues || [], backgroundColor: `hsl(${Math.random() * 360}, 50%, 95%)`, description: panelScript.description, shotType: panelScript.shotType || 'medium-shot', backgroundImageB64: backgroundImages[i] });
+        newPanels.push({ 
+            id: `panel-${i}-${Date.now()}`, 
+            layout, 
+            characters: panelCharacters, 
+            characterIdsInPanel: panelScript.charactersInPanel, 
+            dialogues: panelScript.dialogues || [], 
+            backgroundColor: `hsl(${Math.random() * 360}, 50%, 95%)`, 
+            description: panelScript.description, 
+            shotType: panelScript.shotType || 'medium-shot', 
+            backgroundImageB64: proceduralBackground ? undefined : backgroundImages[i],
+            proceduralBackground: proceduralBackground
+        });
       }
       return newPanels;
   }, [comicLanguage]);
+
+  const processNanoBananaComicScript = useCallback(async (
+    pages: NarrativePageScript[],
+    characterList: NarrativeScript['characterList'],
+    scene: string
+  ): Promise<ComicPanelData[][]> => {
+    const characterInfoList = characterList || [];
+
+    const pagePromises = pages.map(async (page) => {
+      const panelLayouts = generatePanelLayouts(page.panels.length);
+      const isRTL = comicLanguage === 'ja' || comicLanguage === 'zh';
+      let layoutMap = panelLayouts.map((_, i) => i);
+      if (isRTL) {
+        // ... RTL layout mapping ...
+        const numPanels = page.panels.length;
+        if (numPanels === 2) { layoutMap = [1, 0]; }
+        else if (numPanels === 3) { layoutMap = [0, 2, 1]; }
+        else if (numPanels === 4) { layoutMap = [1, 0, 3, 2]; }
+        else if (numPanels === 5) { layoutMap = [1, 0, 4, 3, 2]; }
+        else if (numPanels === 6) { layoutMap = [1, 0, 3, 2, 5, 4]; }
+      }
+
+      const newPanels: ComicPanelData[] = [];
+      let firstPanelImageB64: string | null = null; // For visual consistency
+
+      for (let i = 0; i < page.panels.length; i++) {
+        const panelScript = page.panels[i];
+        const layout = panelLayouts[layoutMap[i]];
+        
+        const sortedCharIds = [...panelScript.charactersInPanel].sort((a, b) => a - b);
+        const positions = ['on the left', 'on the right', 'in the center'];
+        const charCount = sortedCharIds.length;
+        
+        let panelContentDescription;
+        if (charCount > 0) {
+            const characterDetails = sortedCharIds.map((charId, index) => {
+                const charInfo = characterInfoList.find(c => c.id === charId);
+                if (!charInfo) return '';
+                
+                let position = 'in the center';
+                if (charCount === 2) {
+                    position = index === 0 ? 'on the left' : 'on the right';
+                } else if (charCount > 2) {
+                    position = positions[index % positions.length];
+                }
+                
+                return `${charInfo.name} (${charInfo.description}) is positioned ${position}`;
+            }).join('. ');
+            panelContentDescription = `In this panel: ${characterDetails}. They are performing this action: "${panelScript.description}".`;
+        } else {
+            // If no characters, explicitly ask to draw the background scene.
+            panelContentDescription = `This panel is empty of characters. It should only show the background of the scene: "${scene}". Any action described ("${panelScript.description}") refers to subtle environmental effects if applicable.`;
+        }
+
+        const prompt = `Generate a single comic book panel with a modern, clean cartoon style with black outlines.
+CRITICAL: The appearance of each character (clothing, hair, style) MUST remain consistent if they appear in the reference image.
+The scene is: "${scene}".
+The shot type is a "${panelScript.shotType}".
+${panelContentDescription}
+The overall emotion of the panel is "${panelScript.emotion}".
+The panel must be completely empty of any text, words, or speech bubbles.
+If characters are present, they should be positioned to leave empty space at the top of the panel for speech bubbles.`;
+
+        const imageB64 = await generateFullComicPanelImage(prompt, comicAspectRatio, firstPanelImageB64);
+        
+        if (i === 0) {
+            firstPanelImageB64 = imageB64;
+        }
+
+        newPanels.push({
+          id: `panel-${i}-${page.pageNumber}-${Date.now()}`,
+          layout,
+          characters: [],
+          characterIdsInPanel: panelScript.charactersInPanel,
+          dialogues: panelScript.dialogues || [],
+          backgroundColor: '#FFFFFF',
+          description: panelScript.description,
+          shotType: panelScript.shotType || 'medium-shot',
+          backgroundImageB64: imageB64,
+          isNanoBananaOnly: true,
+        });
+      }
+      return newPanels;
+    });
+
+    return await Promise.all(pagePromises);
+  }, [comicLanguage, comicAspectRatio]);
 
   const handleGenerateComic = useCallback(async (mode: 'simple' | 'custom', options?: { theme?: string; language?: string; }, customData?: { lore: Lore, story: Story, characterProfiles: CharacterProfile[] }) => {
     setIsGeneratingComic(true);
@@ -571,6 +683,12 @@ function App() {
     setNarrativeScript(null);
     
     try {
+      if (useProceduralBackgrounds && proceduralBackgrounds.length === 0) {
+        setApiError("You checked 'Only Procedural Background', but no backgrounds exist. Please create one in the Background Editor first.");
+        setIsGeneratingComic(false);
+        return;
+      }
+
       const sceneToUse = comicScene;
       
       if (mode === 'simple') {
@@ -625,23 +743,43 @@ function App() {
             }
             finalProfiles = newProfiles;
         }
-        
-        const characterParamsList = finalProfiles.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
-        
-        const pages: ComicPanelData[][] = [];
-        if (script && script.pages && script.pages.length > 0) {
-            const batchSize = 5; // Process 5 pages in parallel at a time
-            for (let i = 0; i < script.pages.length; i += batchSize) {
-                const pagePromises = script.pages.slice(i, i + batchSize).map(page =>
-                    processComicScript(page.panels, characterParamsList)
-                );
-                const resolvedPages = await Promise.all(pagePromises);
-                pages.push(...resolvedPages);
-            }
-        } else {
-            console.warn(`Generated an empty or invalid script. Skipping comic generation.`);
-        }
 
+        let pages: ComicPanelData[][] = [];
+        let proceduralBgToUse = useProceduralBackgrounds
+          ? proceduralBackgrounds.find(bg => bg.id === selectedBackgroundId) || proceduralBackgrounds[0]
+          : undefined;
+
+        if (proceduralBgToUse) {
+          proceduralBgToUse = {
+            ...proceduralBgToUse,
+            gridPerspective: { ...proceduralBgToUse.gridPerspective, visible: false },
+            gridHorizontal: { ...proceduralBgToUse.gridHorizontal, visible: false },
+            gridVerticals: { ...proceduralBgToUse.gridVerticals, visible: false },
+            gridVerticesVisible: false,
+          };
+        }
+        
+        if (useNanoBananaOnly) {
+          if (!script || !script.pages) {
+              throw new Error("Received an empty or invalid script from the API.");
+          }
+          pages = await processNanoBananaComicScript(script.pages, script.characterList, sceneToUse);
+        } else {
+          const characterParamsList = finalProfiles.map(p => p.characterParams!).filter(Boolean) as CharacterParams[];
+          if (script && script.pages && script.pages.length > 0) {
+              const batchSize = 5; // Process 5 pages in parallel at a time
+              for (let i = 0; i < script.pages.length; i += batchSize) {
+                  const pagePromises = script.pages.slice(i, i + batchSize).map(page =>
+                      processComicScript(page.panels, characterParamsList, proceduralBgToUse)
+                  );
+                  const resolvedPages = await Promise.all(pagePromises);
+                  pages.push(...resolvedPages);
+              }
+          } else {
+              console.warn(`Generated an empty or invalid script. Skipping comic generation.`);
+          }
+        }
+        
         if (pages.length === 0) {
           throw new Error("Failed to generate any comic pages from the script.");
         }
@@ -696,7 +834,21 @@ function App() {
         if (!script || !script.pages || script.pages.length === 0 || script.pages[0].panels.length === 0) {
             throw new Error("Received an empty or invalid script from the API.");
         }
-        const newPanels = await processComicScript(script.pages[0].panels, characterParamsList);
+        
+        let proceduralBgToUse = useProceduralBackgrounds
+          ? proceduralBackgrounds.find(bg => bg.id === selectedBackgroundId) || proceduralBackgrounds[0]
+          : undefined;
+        
+        if (proceduralBgToUse) {
+          proceduralBgToUse = {
+            ...proceduralBgToUse,
+            gridPerspective: { ...proceduralBgToUse.gridPerspective, visible: false },
+            gridHorizontal: { ...proceduralBgToUse.gridHorizontal, visible: false },
+            gridVerticals: { ...proceduralBgToUse.gridVerticals, visible: false },
+            gridVerticesVisible: false,
+          };
+        }
+        const newPanels = await processComicScript(script.pages[0].panels, characterParamsList, proceduralBgToUse);
         setComicPanels(newPanels);
       }
     } catch (error: any) {
@@ -710,7 +862,7 @@ function App() {
     } finally {
       setIsGeneratingComic(false);
     }
-  }, [comicTheme, numComicPanels, comicLanguage, comicScene, story, lore, characterProfiles, processComicScript, numComicPages]);
+  }, [comicTheme, numComicPanels, comicLanguage, comicScene, story, lore, characterProfiles, processComicScript, numComicPages, useNanoBananaOnly, processNanoBananaComicScript, comicAspectRatio, useProceduralBackgrounds, proceduralBackgrounds, selectedBackgroundId]);
   
   const handleRandomizeComic = useCallback(async () => {
     setApiError(null);
@@ -946,6 +1098,12 @@ function App() {
                     }
                     return charInstance;
                 });
+                
+                if (newPanelCharacters.length === 2) {
+                    const headY = 120;
+                    newPanelCharacters[0].lookAt = { x: 9999, y: headY }; 
+                    newPanelCharacters[1].lookAt = { x: -9999, y: headY };
+                }
 
                 return { ...panel, characters: newPanelCharacters };
             });
@@ -1050,12 +1208,25 @@ function App() {
 
     try {
         const episodeTheme = `${richTextToString(genre)}: Temporada ${seasons} de "${richTextToString(name)}"`;
+        let proceduralBgToUse = useProceduralBackgrounds
+          ? proceduralBackgrounds.find(bg => bg.id === selectedBackgroundId) || proceduralBackgrounds[0]
+          : undefined;
+        
+        if (proceduralBgToUse) {
+          proceduralBgToUse = {
+            ...proceduralBgToUse,
+            gridPerspective: { ...proceduralBgToUse.gridPerspective, visible: false },
+            gridHorizontal: { ...proceduralBgToUse.gridHorizontal, visible: false },
+            gridVerticals: { ...proceduralBgToUse.gridVerticals, visible: false },
+            gridVerticesVisible: false,
+          };
+        }
         const script = await generateComicScript(episodeTheme, comicScene, episodes, comicLanguage, characterParamsList.length);
         setNarrativeScript(script);
         
         const pages: ComicPanelData[][] = [];
         if (script && script.pages) {
-            const pagePromises = script.pages.map(page => processComicScript(page.panels, characterParamsList));
+            const pagePromises = script.pages.map(page => processComicScript(page.panels, characterParamsList, proceduralBgToUse));
             pages.push(...await Promise.all(pagePromises));
         }
         
@@ -1077,7 +1248,7 @@ function App() {
     } finally {
         setIsGeneratingComic(false);
     }
-  }, [lore, characterProfiles, comicLanguage, comicScene, processComicScript, openPanel, togglePanel]);
+  }, [lore, characterProfiles, comicLanguage, comicScene, processComicScript, openPanel, togglePanel, useProceduralBackgrounds, proceduralBackgrounds, selectedBackgroundId]);
 
 
   const handleExportComic = useCallback(async (mode: 'current' | 'batch') => {
@@ -1093,7 +1264,7 @@ function App() {
             alert("No hay ningún cómic visible para exportar.");
             return;
         }
-        comicCanvasRef.current.export(isProjectWithPages ? currentPageIndex + 1 : undefined);
+        await comicCanvasRef.current.export(isProjectWithPages ? currentPageIndex + 1 : undefined);
     } else if (mode === 'batch') {
         if (!isProjectWithPages || project.comicPages.length <= 1) {
             alert("Se necesita un proyecto con varias páginas para la exportación por lotes.");
@@ -1113,7 +1284,7 @@ function App() {
                 // Wait for React to re-render the canvas with the new page
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                comicCanvasRef.current.export(i + 1);
+                await comicCanvasRef.current.export(i + 1);
             }
             alert("Exportación por lotes completada.");
         } catch (error) {
@@ -1298,6 +1469,76 @@ function App() {
       setComicPanels(project.comicPages[newIndex]);
     }
   }, [project, currentPageIndex]);
+  
+  const handleCharacterProfilesChange = useCallback((updater: (prev: CharacterProfile[]) => CharacterProfile[]) => {
+    setCharacterProfiles(prevProfiles => {
+        const newProfiles = updater(prevProfiles);
+        
+        if (selectedCharId && comicPanels) {
+            const newSelectedProfile = newProfiles.find(p => p.id === selectedCharId);
+            const oldSelectedProfile = prevProfiles.find(p => p.id === selectedCharId);
+
+            if (newSelectedProfile && oldSelectedProfile && newSelectedProfile.characterParams &&
+                JSON.stringify(newSelectedProfile.characterParams) !== JSON.stringify(oldSelectedProfile.characterParams)) {
+                
+                const newBaseParams = newSelectedProfile.characterParams;
+                let numericCharId: number | undefined;
+
+                if (comicMode === 'simple') {
+                    numericCharId = characterProfiles.findIndex(p => p.id === selectedCharId);
+                } else if (story) {
+                    numericCharId = story.characterProfileIds.indexOf(selectedCharId);
+                }
+                if (numericCharId === -1) {
+                    numericCharId = undefined;
+                }
+
+                if (numericCharId !== undefined) {
+                    setComicPanels(prevPanels => {
+                        if (!prevPanels) return null;
+                        return prevPanels.map(panel => {
+                            if (!panel.characterIdsInPanel.includes(numericCharId!)) {
+                                return panel;
+                            }
+
+                            const newPanelCharacters = panel.characters.map((charInstance, index) => {
+                                if (panel.characterIdsInPanel[index] === numericCharId) {
+                                    const oldParams = charInstance.params;
+                                    const poseKeys: ReadonlyArray<keyof CharacterParams> = [
+                                        'lArmAngle', 'rArmAngle', 'lArmBend', 'rArmBend', 'lLegAngle', 'rLegAngle', 
+                                        'lLegBend', 'rLegBend', 'mouthBend', 'eyebrowAngle', 'upperEyelidCoverage', 
+                                        'lowerEyelidCoverage', 'viewAngle'
+                                    ];
+                                    
+                                    const finalParams: CharacterParams = { ...newBaseParams };
+                                    poseKeys.forEach(key => {
+                                        if (key in oldParams) {
+                                            (finalParams as any)[key] = (oldParams as any)[key];
+                                        }
+                                    });
+
+                                    return { ...charInstance, params: finalParams };
+                                }
+                                return charInstance;
+                            });
+                            
+                            if (newPanelCharacters.length === 2) {
+                                const headY = 120;
+                                newPanelCharacters[0].lookAt = { x: 9999, y: headY }; 
+                                newPanelCharacters[1].lookAt = { x: -9999, y: headY };
+                            }
+
+                            return { ...panel, characters: newPanelCharacters };
+                        });
+                    });
+                }
+            }
+        }
+        
+        return newProfiles;
+    });
+}, [selectedCharId, comicPanels, comicMode, story, characterProfiles]);
+
 
   const fullScreenPanelKey = panels.LoreEditor.isOpen
     ? 'LoreEditor'
@@ -1433,6 +1674,10 @@ function App() {
           onNumComicPanelsChange={setNumComicPanels}
           numComicPages={numComicPages}
           onNumComicPagesChange={setNumComicPages}
+          useNanoBananaOnly={useNanoBananaOnly}
+          onUseNanoBananaOnlyChange={handleUseNanoBananaOnlyChange}
+          useProceduralBackgrounds={useProceduralBackgrounds}
+          onUseProceduralBackgroundsChange={handleUseProceduralBackgroundsChange}
           comicAspectRatio={comicAspectRatio}
           onComicAspectRatioChange={setComicAspectRatio}
           minComicFontSize={minComicFontSize}
@@ -1454,12 +1699,13 @@ function App() {
           lore={lore}
           onLoreChange={setLore}
           characterProfiles={characterProfiles}
-          onCharacterProfilesChange={setCharacterProfiles}
+          onCharacterProfilesChange={handleCharacterProfilesChange}
           selectedCharId={selectedCharId}
           onSelectedCharIdChange={setSelectedCharId}
           onDeleteCharacter={handleDeleteCharacter}
           story={story}
           onStoryChange={setStory}
+          // FIX: Corrected typo from onGenerateNarrativeElement to handleGenerateNarrativeElement
           onGenerateNarrativeElement={handleGenerateNarrativeElement}
           onGenerateSimpleCharacters={handleGenerateSimpleCharacters}
           isGeneratingSimpleCharacters={isGeneratingSimpleCharacters}

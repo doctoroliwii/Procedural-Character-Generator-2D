@@ -21,7 +21,7 @@ interface CharacterCanvasProps {
 }
 
 
-const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => void }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, viewBox, onViewBoxChange, panMode = 'direct' }, ref) => {
+const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => Promise<void> }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, viewBox, onViewBoxChange, panMode = 'direct' }, ref) => {
   const VIEWBOX_WIDTH_BASE = 400;
   const VIEWBOX_HEIGHT = 700;
   
@@ -39,91 +39,113 @@ const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => void }), 
     : VIEWBOX_WIDTH_BASE;
   
   useImperativeHandle(ref, () => ({
-    export: (pageNumber?: number) => {
+    export: async (pageNumber?: number) => {
       if (!svgRef.current || !isComicMode) {
         alert("No comic available to export.");
         return;
       }
       const svgNode = svgRef.current;
-      const serializer = new XMLSerializer();
-      let svgString = serializer.serializeToString(svgNode);
+      
+      const fontUrl = "https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@700&family=Luckiest+Guy&display=swap";
+      const fontCss = await fetch(fontUrl).then(res => res.text()).catch(e => {
+        console.error("Could not fetch font stylesheet for export:", e);
+        return '';
+      });
+      
+      const styleEl = document.createElement('style');
+      styleEl.innerHTML = fontCss;
+      
+      const defsEl = svgNode.querySelector('defs') || document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      if (!svgNode.querySelector('defs')) {
+          svgNode.insertBefore(defsEl, svgNode.firstChild);
+      }
+      defsEl.appendChild(styleEl);
 
-      // Create an image
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgNode);
+
+      defsEl.removeChild(styleEl);
+
       const img = new Image();
-      const svgBlob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
+      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(svgBlob);
 
-      img.onload = () => {
-        // Create a canvas
-        const canvas = document.createElement("canvas");
-        const exportResolution = 2048; // a high resolution for good quality
-        
-        const ratio = canvasWidth / canvasHeight;
-        canvas.width = exportResolution;
-        canvas.height = exportResolution / ratio;
-        
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-           
-           // --- Add Plop! Logo to last panel ---
-           if (comicPanels && comicPanels.length > 0) {
-               const lastPanel = comicPanels[comicPanels.length - 1];
-               const lastPanelLayout = lastPanel.layout;
-               
-               const panelX = (lastPanelLayout.x / 100) * canvas.width;
-               const panelY = (lastPanelLayout.y / 100) * canvas.height;
-               const panelWidth = (lastPanelLayout.width / 100) * canvas.width;
-               const panelHeight = (lastPanelLayout.height / 100) * canvas.height;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          img.onload = async () => {
+            try {
+              const canvas = document.createElement("canvas");
+              const exportResolution = 2048;
+              const ratio = canvasWidth / canvasHeight;
+              canvas.width = exportResolution;
+              canvas.height = exportResolution / ratio;
+              const ctx = canvas.getContext("2d");
 
-               const logoText = "Plop!";
-               const logoFontSize = Math.round(panelHeight * 0.12);
-               const logoMargin = panelWidth * 0.05;
+              if (!ctx) {
+                reject(new Error("Could not get canvas context."));
+                return;
+              }
 
-               ctx.font = `bold ${logoFontSize}px 'Luckiest Guy', sans-serif`;
-               ctx.textAlign = 'right';
-               ctx.textBaseline = 'bottom';
-               
-               const logoX = panelX + panelWidth - logoMargin;
-               const logoY = panelY + panelHeight - logoMargin;
-               
-               // White outline for better visibility
-               ctx.strokeStyle = '#FFFFFF';
-               ctx.lineWidth = logoFontSize * 0.25;
-               ctx.strokeText(logoText, logoX, logoY);
-               
-               // Red Fill
-               ctx.fillStyle = '#D84949'; // condorito-red
-               ctx.fillText(logoText, logoX, logoY);
-           }
-           
-           const pngUrl = canvas.toDataURL("image/png");
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-           // --- Generate Filename ---
-           const today = new Date();
-           const dateStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
-           
-           const sanitizedTheme = comicTheme
-             .trim()
-             .replace(/\s+/g, '-') 
-             .replace(/[^a-zA-Z0-9-]/g, '')
-             .toLowerCase() || 'comic';
-            
-           const pageString = pageNumber ? `-pagina-${pageNumber}` : '';
-           const filename = `${sanitizedTheme}-plop${pageString}-${dateStr}.png`;
-           
-           // Trigger download
-           const a = document.createElement("a");
-           a.href = pngUrl;
-           a.download = filename;
-           document.body.appendChild(a);
-           a.click();
-           document.body.removeChild(a);
-        }
+              if (comicPanels && comicPanels.length > 0) {
+                const lastPanel = comicPanels[comicPanels.length - 1];
+                const lastPanelLayout = lastPanel.layout;
+                
+                const panelX = (lastPanelLayout.x / 100) * canvas.width;
+                const panelY = (lastPanelLayout.y / 100) * canvas.height;
+                const panelWidth = (lastPanelLayout.width / 100) * canvas.width;
+                const panelHeight = (lastPanelLayout.height / 100) * canvas.height;
+
+                const logoText = "Plop!";
+                const logoFontSize = Math.round(panelHeight * 0.12);
+                const logoMargin = panelWidth * 0.05;
+
+                await document.fonts.ready;
+
+                ctx.font = `bold ${logoFontSize}px 'Luckiest Guy', sans-serif`;
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'bottom';
+                
+                const logoX = panelX + panelWidth - logoMargin;
+                const logoY = panelY + panelHeight - logoMargin;
+                
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.lineWidth = logoFontSize * 0.25;
+                ctx.strokeText(logoText, logoX, logoY);
+                
+                ctx.fillStyle = '#D84949';
+                ctx.fillText(logoText, logoX, logoY);
+              }
+              
+              const pngUrl = canvas.toDataURL("image/png");
+
+              const today = new Date();
+              const dateStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+              const sanitizedTheme = comicTheme.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase() || 'comic';
+              const pageString = pageNumber ? `-pagina-${pageNumber}` : '';
+              const filename = `${sanitizedTheme}-plop${pageString}-${dateStr}.png`;
+              
+              const a = document.createElement("a");
+              a.href = pngUrl;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          };
+          img.onerror = () => {
+            reject(new Error("Failed to load SVG as image for export."));
+          };
+          img.src = url;
+        });
+      } finally {
         URL.revokeObjectURL(url);
-      };
-      
-      img.src = url;
+      }
     }
   }));
   

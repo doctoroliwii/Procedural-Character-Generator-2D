@@ -724,3 +724,41 @@ El objetivo es crear una variación de la escena que se sienta como si estuviera
         return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
     }
 };
+
+export const generateFullComicPanelImage = async (
+    prompt: string, 
+    aspectRatio: '1:1' | '16:9' | '9:16',
+    referenceImageB64: string | null = null
+): Promise<string> => {
+    
+    let fullPrompt = `${prompt}\nThe final image must have a precise aspect ratio of ${aspectRatio}.`;
+    if (referenceImageB64) {
+        fullPrompt += `\n\n**IMPORTANT FOR CONSISTENCY:** Use the provided reference image to maintain a consistent art style and character appearance. The new panel should depict a different moment or action as described in the prompt, but the characters and environment MUST look like they belong in the same scene as the reference image. Replicate the characters' clothing, hair, and features exactly as they appear in the reference.`;
+    }
+
+    const parts: any[] = [{ text: fullPrompt }];
+    if (referenceImageB64) {
+        parts.unshift({ inlineData: { mimeType: 'image/png', data: referenceImageB64 } });
+    }
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return part.inlineData.data; // This is the base64 string
+            }
+        }
+        throw new Error("No image data found in API response for full comic panel.");
+    } catch (error) {
+        console.error("Error generating full comic panel image:", error);
+        // Fallback to a transparent pixel
+        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    }
+};

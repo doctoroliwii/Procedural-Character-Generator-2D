@@ -1,5 +1,8 @@
 
 
+
+
+
 export type BackgroundType = 'exterior' | 'interior';
 export type TextureType = 'solid' | 'grass' | 'dirt' | 'tiles' | 'wood' | 'brick' | 'wallpaper' | 'carpet' | 'concrete';
 export type CloudStyle = 'fluffy' | 'wispy' | 'stormy' | 'none';
@@ -11,7 +14,8 @@ export type DoorStyle = 'simple' | 'paneled' | 'glass' | 'double';
 export interface SkyParams {
   topColor: string;
   bottomColor: string;
-  cloudDensity: number; // 0-100
+  cloudsVisible: boolean;
+  cloudDensity: number; // 0-999
   cloudColor: string;
   cloudStyle: CloudStyle;
   sunMoonVisible: boolean;
@@ -47,7 +51,7 @@ export interface HorizonParams {
   
   // Árboles
   treesVisible: boolean;
-  treeCount: number; // 3-30
+  treeCount: number; // 0-999
   treeSize: number; // 20-150
   treeColor: string;
   treeVariation: number; // 0-100 (variación de tamaños)
@@ -62,8 +66,11 @@ export interface HorizonParams {
 
   // Casas
   housesVisible: boolean;
-  houseCount: number; // 2-10
-  houseSize: number; // 20-80
+  houseCount: number; // 0-999
+  houseWidthMin: number; // in grid units
+  houseWidthMax: number; // in grid units
+  houseHeightMin: number; // in grid units
+  houseHeightMax: number; // in grid units
   houseColor: string;
   houseColorVariation: number; // 0-100
 }
@@ -148,6 +155,19 @@ export interface FurnitureItem {
   visible: boolean;
 }
 
+export interface WallParams {
+  id: string;
+  visible: boolean;
+  start: { x: number; z: number }; // grid coordinates, x: -10 to 10, z: 0 to 10
+  end: { x: number; z: number }; // grid coordinates
+  height: number; // percentage 0-100
+  strokeWidth: number; // px
+  color: string;
+  opacity: number; // 0-100
+  shadow: boolean;
+  shadowOpacity: number; // 0-100
+}
+
 // Background completo
 export interface ProceduralBackground {
   id: string;
@@ -164,11 +184,12 @@ export interface ProceduralBackground {
   windows: WindowParams[];
   doors: DoorParams[];
   furniture: FurnitureItem[]; // Para futuro
+  walls: WallParams[];
   
   // Común
-  viewAngle: number; // -45 to 45 (horizontal rotation)
-  viewHeight: number; // -30 to 30 (vertical tilt)
-  focalLength: number; // 300-1000 (perspectiva)
+  viewAngle: number; // -135 to 135 (horizontal rotation)
+  viewHeight: number; // -90 to 90 (vertical tilt)
+  focalLength: number; // 300-3000 (perspectiva)
   ambientLight: number; // 0-100
   ambientColor: string;
   shadows: boolean;
@@ -178,11 +199,28 @@ export interface ProceduralBackground {
   fogDensity: number; // 0-100
   
   // Rejilla
-  gridVisible: boolean;
-  gridColor: string;
   gridDensity: number; // 1-50
-  gridStrokeWidth: number;
-  gridHorizonFade: number; // 0-100
+  gridColor: string;
+  gridPerspective: {
+    visible: boolean;
+    strokeWidth: number; // 0.1-5
+    horizonFade: number; // 0-100
+  };
+  gridHorizontal: {
+    visible: boolean;
+    strokeWidth: number; // 0.1-5
+    horizonFade: number; // 0-100
+  };
+  gridVerticals: {
+    visible: boolean;
+    strokeWidth: number; // 0.1-5
+    horizonFade: number; // 0-100
+  };
+
+  // Vértices de la rejilla
+  gridVerticesVisible: boolean;
+  gridVertexColor: string;
+  gridVertexRadius: number;
 
   // Canvas
   canvasWidth: number; // default 800
@@ -202,7 +240,7 @@ export interface CharacterParams {
   pupilSizeRatio: number;    // % of eye size
   // FIX: Corrected typo from upperEylidCoverage to upperEyelidCoverage
   upperEyelidCoverage: number; // % of eye height, renamed from eyelidCoverage
-  // FIX: Corrected typo from lowerEylidCoverage to lowerEyelidCoverage
+  // FIX: Corrected typo from lowerEylidCoverage to lowerEylidCoverage
   lowerEyelidCoverage: number; // % of eye height, for the bottom lid
   eyeStyle: 'realistic' | 'blocky';
   eyeTracking: boolean;
@@ -309,6 +347,7 @@ export interface ComicPanelData {
   shotType: string;
   backgroundImageB64?: string;
   proceduralBackground?: ProceduralBackground;
+  isNanoBananaOnly?: boolean;
 }
 
 // --- NEW NARRATIVE SYSTEM TYPES ---
