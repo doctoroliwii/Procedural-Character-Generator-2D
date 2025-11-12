@@ -330,15 +330,15 @@ function App() {
 
   const openPanel = useCallback((key: PanelKey) => {
     setPanels(prevPanels => {
-      const maxZ = Math.max(0, ...Object.values(prevPanels).map(p => p.zIndex));
-      return {
-        ...prevPanels,
-        [key]: {
-          ...prevPanels[key],
+      // FIX: Cast Object.values to PanelState[] to resolve a potential type inference issue where 'p' is treated as 'unknown'.
+      const maxZ = Math.max(0, ...(Object.values(prevPanels) as PanelState[]).map(p => p.zIndex));
+      const newPanels = { ...prevPanels };
+      newPanels[key] = {
+          ...newPanels[key],
           isOpen: true,
           zIndex: maxZ + 1,
-        },
       };
+      return newPanels;
     });
   }, []);
 
@@ -1567,13 +1567,8 @@ If characters are present, they should be positioned to leave empty space at the
     input.click();
   }, []);
   
-  const handleAppendComicTheme = useCallback((summary: string) => {
-    setComicTheme(prev => {
-        const newContent = summary.trim();
-        if (prev.trim() === '') return newContent;
-        // Append summary on a new line for better readability in the textarea
-        return `${prev.trim()}\n\n${newContent}`;
-    });
+  const handleSetComicTheme = useCallback((summary: string) => {
+    setComicTheme(summary.trim());
   }, []);
 
   const handleRandomizeComicScene = useCallback(async () => {
@@ -1821,7 +1816,7 @@ If characters are present, they should be positioned to leave empty space at the
           onComicSceneChange={setComicScene}
           onRandomizeComicScene={handleRandomizeComicScene}
           isRandomizingScene={isRandomizingScene}
-          onAppendComicTheme={handleAppendComicTheme}
+          onSetComicTheme={handleSetComicTheme}
           numComicPanels={numComicPanels}
           onNumComicPanelsChange={setNumComicPanels}
           numComicPages={numComicPages}

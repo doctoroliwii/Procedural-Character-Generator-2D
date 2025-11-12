@@ -30,7 +30,7 @@ interface ControlPanelProps {
   onComicSceneChange: (value: string) => void;
   onRandomizeComicScene: () => void;
   isRandomizingScene: boolean;
-  onAppendComicTheme: (theme: string) => void;
+  onSetComicTheme: (theme: string) => void;
   numComicPanels: number;
   onNumComicPanelsChange: (value: number) => void;
   numComicPages: number;
@@ -192,7 +192,7 @@ const CharacterListItem: React.FC<CharacterListItemProps> = ({
 
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { 
-    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, useNanoBananaOnly, onUseNanoBananaOnlyChange, useProceduralBackgrounds, onUseProceduralBackgroundsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicPanelCornerRadius, onComicPanelCornerRadiusChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
+    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onSetComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, useNanoBananaOnly, onUseNanoBananaOnlyChange, useProceduralBackgrounds, onUseProceduralBackgroundsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicPanelCornerRadius, onComicPanelCornerRadiusChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
     // Narrative props
     lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, isGeneratingSimpleCharacters, onRegenerateCharacterName, onRandomizeCharacterAppearance, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
     setApiError, onGenerateProject,
@@ -312,7 +312,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
           case 'TrendingTheme':
             content = (
               <TrendingThemePanel
-                onAppendTheme={onAppendComicTheme}
+                onSetTheme={onSetComicTheme}
                 setApiError={setApiError}
               />
             );

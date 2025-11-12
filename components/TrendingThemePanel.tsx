@@ -4,11 +4,11 @@ import { getTrendsForCountry } from '../services/geminiService';
 import { DiceIcon } from './icons';
 
 interface TrendingThemePanelProps {
-  onAppendTheme: (theme: string) => void;
+  onSetTheme: (theme: string) => void;
   setApiError: (error: string | null) => void;
 }
 
-const TrendingThemePanel: React.FC<TrendingThemePanelProps> = ({ onAppendTheme, setApiError }) => {
+const TrendingThemePanel: React.FC<TrendingThemePanelProps> = ({ onSetTheme, setApiError }) => {
   const [selectedCountry, setSelectedCountry] = useState('CL');
   const [trends, setTrends] = useState<{ title: string; summary: string; }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,7 +66,7 @@ const TrendingThemePanel: React.FC<TrendingThemePanelProps> = ({ onAppendTheme, 
         {trends.map((trend, index) => (
           <button
             key={index}
-            onClick={() => onAppendTheme(trend.summary)}
+            onClick={() => onSetTheme(trend.summary)}
             className="w-full text-left p-2 bg-panel-header rounded-lg hover:bg-panel-border transition text-xs font-semibold"
           >
             {trend.title}
