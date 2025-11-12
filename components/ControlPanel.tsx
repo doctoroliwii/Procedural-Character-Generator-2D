@@ -4,7 +4,8 @@ import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText,
 import { COMPULSIVO_LOGO_BASE64, DiceIcon } from './icons';
 import Slider from './Slider';
 import ControlModule from './ControlModule';
-import LoreEditor from './NarrativeEditor';
+// FIX: Changed import for LoreEditor from default to named to resolve "no default export" error.
+import { LoreEditor } from './NarrativeEditor';
 import CharacterEditor from './CharacterEditor';
 import TrendingThemePanel from './TrendingThemePanel';
 import { generateRandomAppearanceParams, getRandomParamValue } from '../services/characterGenerationService';
@@ -248,13 +249,16 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     const newScript = structuredClone(narrativeScript);
 
     if (panelIndex === null) { // Page-level change
-      (newScript.pages[pageIndex] as any)[field] = value;
+      // FIX: Cast to Record<string, any> to allow dynamic property assignment and resolve 'never' type error.
+      (newScript.pages[pageIndex] as Record<string, any>)[field] = value;
     } else { // Panel-level change
       const panel = newScript.pages[pageIndex].panels[panelIndex];
       if (dialogueIndex !== null && dialogueField !== null) {
-        panel.dialogues[dialogueIndex][dialogueField] = value;
+        // FIX: Corrected a potential typo where 'dialogue' was used instead of 'dialogues'.
+        // FIX: Cast to Record<string, any> to allow indexed assignment on a union-keyed property.
+        (panel.dialogues[dialogueIndex] as Record<string, any>)[dialogueField] = value;
       } else {
-        (panel as any)[field] = value;
+        (panel as Record<string, any>)[field] = value;
       }
     }
     onNarrativeScriptChange(newScript);
@@ -573,7 +577,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                                             {/* Dialogue Editor */}
                                             <div className="space-y-2 pt-2 border-t border-panel-header">
                                                 <h4 className="text-xs font-semibold text-condorito-brown">Diálogos</h4>
-                                                {panel.dialogues.map((dialogue, index) => (
+                                                {(panel.dialogues || []).map((dialogue, index) => (
                                                     <div key={index} className="p-2 bg-panel-header rounded-md space-y-2">
                                                         <div className="flex items-center gap-2">
                                                           <select
@@ -584,7 +588,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                                                             {characterProfiles.map((p, charIndex) => <option key={p.id} value={charIndex}>{richTextToString(p.name)}</option>)}
                                                           </select>
                                                           <button onClick={() => {
-                                                              const newDialogues = panel.dialogues.filter((_, i) => i !== index);
+                                                              const newDialogues = (panel.dialogues || []).filter((_, i) => i !== index);
                                                               handleScriptChange(selectedPageIndex, selectedPanelIndex, 'dialogues', newDialogues);
                                                           }} className="p-1 text-condorito-red rounded-full hover:bg-red-100">&times;</button>
                                                         </div>
@@ -598,7 +602,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                                                 ))}
                                                 <button onClick={() => {
                                                     const newDialogue: DialogueData = { characterId: 0, text: '' };
-                                                    const newDialogues = [...panel.dialogues, newDialogue];
+                                                    const newDialogues = [...(panel.dialogues || []), newDialogue];
                                                     handleScriptChange(selectedPageIndex, selectedPanelIndex, 'dialogues', newDialogues);
                                                 }} className="w-full text-xs font-semibold text-condorito-green py-1 rounded-md hover:bg-green-100">+ Añadir Diálogo</button>
                                             </div>

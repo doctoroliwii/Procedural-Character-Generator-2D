@@ -64,7 +64,7 @@ const Character: React.FC<{
         const {
             headWidth, headHeight, headShape, headCornerRadius, triangleCornerRadius, eyeSizeRatio, eyeSpacingRatio, pupilSizeRatio, upperEyelidCoverage,
             // FIX: Corrected typo from lowerEylidCoverage to lowerEyelidCoverage to match type definition.
-            lowerEyelidCoverage, eyeStyle, eyeTracking, eyelashes, eyelashCount, eyelashLength, eyelashAngle, glint, glintSizeRatio, glintXOffsetRatio, glintYOffsetRatio, glintOpacity, mouthWidthRatio, mouthYOffsetRatio, mouthBend, eyebrows, eyebrowWidthRatio, eyebrowHeightRatio, eyebrowYOffsetRatio, eyebrowAngle, neckHeight, neckWidthRatio, torsoHeight, torsoWidth, torsoShape, torsoCornerRadius, pelvisHeight, pelvisWidthRatio, pelvisShape, armLength, lArmWidth, rArmWidth, lHandSize, rHandSize, legLength, lLegWidth, rLegWidth, lFootSize, rFootSize, lArmAngle, rArmAngle, lArmBend, rArmBend, lLegAngle, rLegAngle, lLegBend, rLegBend, hair, backHairWidthRatio, backHairHeightRatio, fringeHeightRatio, viewAngle, bodyColor, irisColor, outlineColor, pupilColor, hairColor, bodyOutlines, eyeOutlines
+            lowerEyelidCoverage, eyeStyle, eyeTracking, eyelashes, eyelashCount, eyelashLength, eyelashAngle, glint, glintSizeRatio, glintXOffsetRatio, glintYOffsetRatio, glintOpacity, mouthWidthRatio, mouthYOffsetRatio, mouthBend, eyebrows, eyebrowWidthRatio, eyebrowHeightRatio, eyebrowYOffsetRatio, eyebrowAngle, neckHeight, neckWidthRatio, torsoHeight, torsoWidth, torsoShape, torsoCornerRadius, pelvisHeight, pelvisWidthRatio, pelvisShape, armLength, lArmWidth, rArmWidth, lHandSize, rHandSize, legLength, lLegWidth, rLegWidth, lFootSize, rFootSize, lArmAngle, rArmAngle, lArmBend, rArmBend, lLegAngle, rLegAngle, lLegBend, rLegBend, hair, backHairWidthRatio, backHairHeightRatio, backHairShape, hairCurliness, hairCurlFrequency, hairCurlAmplitude, fringeHeightRatio, viewAngle, bodyColor, irisColor, outlineColor, pupilColor, hairColor, bodyOutlines, eyeOutlines
         } = params;
 
         // --- 2.5D View Calculations ---
@@ -370,7 +370,60 @@ const Character: React.FC<{
                             const backHairRx = (backHairWidth / 2) * (1 + 0.25 * Math.abs(viewFactor));
                             const backHairRy = headHeight * (backHairHeightRatio / 100);
                             const backHairCenterY = hairAnchorY + backHairRy * 0.7;
-                            return `M ${dynamicCenterX - backHairRx}, ${backHairCenterY} A ${backHairRx} ${backHairRy} 0 0 1 ${dynamicCenterX + backHairRx}, ${backHairCenterY} Z`;
+                            const cx = dynamicCenterX;
+                            const cy = backHairCenterY;
+
+                            // Apply curliness to ellipse-based shapes
+                            if (hairCurliness > 0 && ['smooth', 'afro', 'oval'].includes(backHairShape)) {
+                                const points = [];
+                                const numPoints = 100;
+                                const curlFactor = hairCurliness / 100;
+
+                                for (let i = 0; i <= numPoints; i++) {
+                                    const angle = (i / numPoints) * 2 * Math.PI;
+                                    const amplitude = hairCurlAmplitude * curlFactor;
+                                    const frequency = hairCurlFrequency;
+                                    const radiusOffset = backHairShape === 'afro'
+                                      ? (Math.random() - 0.5) * amplitude * 2
+                                      : Math.sin(angle * frequency) * amplitude;
+
+                                    const rX = backHairRx + radiusOffset;
+                                    const rY = backHairRy + radiusOffset;
+                                    const x = cx + rX * Math.cos(angle);
+                                    const y = cy + rY * Math.sin(angle);
+                                    points.push(`${x},${y}`);
+                                }
+                                return `M ${points[0]} L ${points.slice(1).join(' ')} Z`;
+                            }
+
+                            // Base shape logic for non-curly or non-ellipse shapes
+                            switch (backHairShape) {
+                                case 'square': {
+                                    const cornerRadius = Math.min(20, backHairRx * 0.2, backHairRy * 0.2);
+                                    return `M ${cx - backHairRx + cornerRadius},${cy - backHairRy} 
+                                            L ${cx + backHairRx - cornerRadius},${cy - backHairRy} 
+                                            A ${cornerRadius},${cornerRadius} 0 0 1 ${cx + backHairRx},${cy - backHairRy + cornerRadius}
+                                            L ${cx + backHairRx},${cy + backHairRy - cornerRadius}
+                                            A ${cornerRadius},${cornerRadius} 0 0 1 ${cx + backHairRx - cornerRadius},${cy + backHairRy}
+                                            L ${cx - backHairRx + cornerRadius},${cy + backHairRy}
+                                            A ${cornerRadius},${cornerRadius} 0 0 1 ${cx - backHairRx},${cy + backHairRy - cornerRadius}
+                                            L ${cx - backHairRx},${cy - backHairRy + cornerRadius}
+                                            A ${cornerRadius},${cornerRadius} 0 0 1 ${cx - backHairRx + cornerRadius},${cy - backHairRy} Z`;
+                                }
+                                case 'triangle': {
+                                     return createRoundedPolygonPath([
+                                        { x: cx, y: cy - backHairRy },
+                                        { x: cx + backHairRx, y: cy + backHairRy },
+                                        { x: cx - backHairRx, y: cy + backHairRy }
+                                    ], 10);
+                                }
+                                case 'smooth':
+                                case 'afro': // Fallback for no curl
+                                case 'oval':
+                                default:
+                                    // Ellipse path
+                                    return `M ${cx - backHairRx},${cy} A ${backHairRx},${backHairRy} 0 1 0 ${cx + backHairRx},${cy} A ${backHairRx},${backHairRy} 0 1 0 ${cx - backHairRx},${cy} Z`;
+                            }
                         })()} fill={hairColor} />
                     </g>}
                     

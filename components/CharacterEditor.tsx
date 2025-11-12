@@ -621,6 +621,7 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
                                 showBoundingBoxes={false}
                                 comicAspectRatio="1:1"
                                 minComicFontSize={12} maxComicFontSize={18} comicLanguage="es" comicFontFamily="Comic Neue" comicTheme=""
+                                comicPanelCornerRadius={10}
                                 canvasResetToken={0}
                                 viewBox={viewBox}
                                 onViewBoxChange={setViewBox}

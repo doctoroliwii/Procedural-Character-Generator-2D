@@ -73,6 +73,14 @@ interface ComicPanelProps {
     layer: 'content' | 'dialogue';
 }
 
+const HORIZON_LINE_MIN = 0.6; // 60% de altura
+const HORIZON_LINE_MAX = 0.8; // 80% de altura
+const THIRDS = [0.33, 0.66]; // Regla de tercios
+const GOLDEN_RATIO = [0.382, 0.618]; // Proporción áurea
+const SCALE_CLOSEUP = [1.3, 1.8]; // Primer plano
+const SCALE_MEDIUM = [0.8, 1.2]; // Plano medio
+const SCALE_WIDE = [0.5, 0.7]; // Plano general
+
 const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFontSize, maxComicFontSize, instanceKey, comicLanguage, comicFontFamily, comicPanelCornerRadius, layer }) => {
     const { x, y, width, height } = panelLayout;
     
@@ -83,8 +91,63 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
     const VIEWBOX_WIDTH_BASE = 400;
     const VIEWBOX_HEIGHT = 700;
 
+    const composedCharacters = useMemo(() => {
+        if (panel.isNanoBananaOnly || !panel.characters || panel.characters.length === 0) {
+            return panel.characters;
+        }
+
+        const getRandomNumberInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+
+        const horizonLineY = height * getRandomNumberInRange(HORIZON_LINE_MIN, HORIZON_LINE_MAX);
+        const useGoldenRatio = panel.characters.length <= 2;
+        const xPositions = (useGoldenRatio ? GOLDEN_RATIO : THIRDS).sort(() => 0.5 - Math.random());
+        
+        const characterXPositions: { [key: number]: number } = {};
+        const uniqueCharIds = [...new Set(panel.characterIdsInPanel)];
+        uniqueCharIds.forEach((id, index) => {
+            characterXPositions[id] = xPositions[index % xPositions.length];
+        });
+
+        return panel.characters.map((charInstance, index) => {
+            const charId = panel.characterIdsInPanel[index];
+
+            const shotRoll = Math.random();
+            let scale: number;
+            if (shotRoll < 0.3) {
+                scale = getRandomNumberInRange(SCALE_CLOSEUP[0], SCALE_CLOSEUP[1]);
+            } else if (shotRoll < 0.8) {
+                scale = getRandomNumberInRange(SCALE_MEDIUM[0], SCALE_MEDIUM[1]);
+            } else {
+                scale = getRandomNumberInRange(SCALE_WIDE[0], SCALE_WIDE[1]);
+            }
+            
+            const xPosPercent = characterXPositions[charId] ?? 0.5;
+            const newX = (xPosPercent - 0.5) * (VIEWBOX_WIDTH_BASE * 0.9);
+
+            const depthFactor = (scale - SCALE_WIDE[0]) / (SCALE_CLOSEUP[1] - SCALE_WIDE[0]);
+            const yOffsetForDepth = depthFactor * (height * 0.05); // Bigger characters (higher scale/depthFactor) are lower (higher yOffset)
+            
+            const feetY = horizonLineY + yOffsetForDepth;
+
+            const feetOffsetFromCenterInCharacterCoords = 250; // Approximate distance from character origin (0,0) to feet
+            const scaledFeetOffset = feetOffsetFromCenterInCharacterCoords * scale * (height / VIEWBOX_HEIGHT);
+            
+            // The character's y prop is an offset from the center of the scaled viewbox.
+            // We want the character's feet to be at `feetY`.
+            const newY = (feetY - scaledFeetOffset) - (height / 2);
+
+            return {
+                ...charInstance,
+                x: newX,
+                y: newY,
+                scale: scale
+            };
+        });
+    }, [panel.characters, panel.characterIdsInPanel, panel.isNanoBananaOnly, width, height]);
+
+
     const dialogueElements = useMemo(() => {
-        if (!panel.dialogues || panel.dialogues.length === 0) {
+        if (!panel.dialogues || panel.dialogues.length === 0 || !composedCharacters) {
             return [];
         }
 
@@ -92,15 +155,50 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
         const padding = fontSize * 0.8;
         const lineSpacing = fontSize * 1.4;
 
-        let bubbles: any[] = [];
-        let occupiedRects: {x: number, y: number, width: number, height: number}[] = [];
+        const ALLOW_OVERFLOW_TOP = true;
+        const ALLOW_OVERFLOW_SIDES = 30;
 
-        panel.dialogues.forEach((dialogue, index) => {
-            const charIndex = panel.characterIdsInPanel.indexOf(dialogue.characterId);
-            const character = charIndex !== -1 ? panel.characters[charIndex] : null;
-            if (!character) return;
+        const characterFaces = (composedCharacters || []).map((char, index) => {
+            const { params } = char;
+            const viewFactor = Math.sin((params.viewAngle * Math.PI) / 180);
+            const bodyXOffset = viewFactor * params.torsoWidth * 0.1;
+            const headYInCharacterCoords = 120;
+            const characterCenterYInCharacterCoords = VIEWBOX_HEIGHT / 2;
             
-            const words = dialogue.text.split(' ');
+            const headCenterX = (char.x + bodyXOffset) * (width / VIEWBOX_WIDTH_BASE) + (width / 2);
+            const headCenterY = (char.y + headYInCharacterCoords - characterCenterYInCharacterCoords) * (height / VIEWBOX_HEIGHT) + (height / 2);
+            const faceWidth = params.headWidth * char.scale * (width / VIEWBOX_WIDTH_BASE) * 1.2;
+            const faceHeight = params.headHeight * char.scale * (height / VIEWBOX_HEIGHT) * 1.2;
+            
+            return {
+                x: headCenterX - faceWidth / 2,
+                y: headCenterY - faceHeight / 2,
+                width: faceWidth,
+                height: faceHeight,
+                charId: panel.characterIdsInPanel[index]
+            };
+        });
+        
+        let occupiedRects: {x: number, y: number, width: number, height: number}[] = [...characterFaces];
+        let bubbles: any[] = [];
+
+        const sortedDialogues = [...panel.dialogues].sort((a, b) => {
+            const charAIndex = panel.characterIdsInPanel.indexOf(a.characterId);
+            const charBIndex = panel.characterIdsInPanel.indexOf(b.characterId);
+            if (charAIndex === -1 || charBIndex === -1) return 0;
+            const charAX = (composedCharacters || [])[charAIndex]?.x || 0;
+            const charBX = (composedCharacters || [])[charBIndex]?.x || 0;
+            return charAX - charBX;
+        });
+
+        sortedDialogues.forEach((dialogue, index) => {
+            const charIndex = panel.characterIdsInPanel.indexOf(dialogue.characterId);
+            if (charIndex === -1) return;
+
+            const speakerFace = characterFaces.find(f => f.charId === dialogue.characterId);
+            if (!speakerFace) return;
+            
+            const words = dialogue.text.toUpperCase().split(' ');
             let lines: string[] = [];
             let currentLine = words[0] || '';
             for (let i = 1; i < words.length; i++) {
@@ -113,81 +211,69 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
             }
             lines.push(currentLine);
 
-            const bubbleWidth = Math.min(width * 0.8, Math.max(...lines.map(l => l.length)) * fontSize * 0.6 + padding * 2);
+            const bubbleWidth = Math.min(width * 0.9, Math.max(...lines.map(l => l.length)) * fontSize * 0.6 + padding * 2);
             const bubbleHeight = lines.length * lineSpacing + padding * 2;
             
-            const { params } = character;
-            const viewFactor = Math.sin((params.viewAngle * Math.PI) / 180);
-            const bodyXOffset = viewFactor * params.torsoWidth * 0.1;
-            const headYInCharacterCoords = 120; // from Character.tsx
-            const characterCenterYInCharacterCoords = VIEWBOX_HEIGHT / 2;
-            
-            // Correctly transform character-space head position to panel-space
-            const speakerHeadX = (character.x + bodyXOffset) * (width / VIEWBOX_WIDTH_BASE) + (width / 2);
-            const speakerHeadY = (character.y + headYInCharacterCoords - characterCenterYInCharacterCoords) * (height / VIEWBOX_HEIGHT) + (height / 2);
-            
-            const scaledHeadHeight = character.params.headHeight * character.scale * (height / VIEWBOX_HEIGHT);
-            const headTopY = speakerHeadY - scaledHeadHeight / 2;
-
             let bubbleX = 0, bubbleY = 0;
-            const attempts = 15;
             let foundPosition = false;
 
-            for (let i = 0; i < attempts; i++) {
-                const angle = (Math.random() * 0.8 + 0.1) * Math.PI; // Top hemisphere, avoiding horizontal
-                const radius = Math.random() * (width / 5) + 20;
-                
-                bubbleX = speakerHeadX - Math.cos(angle) * radius - bubbleWidth / 2;
-                bubbleY = speakerHeadY - Math.sin(angle) * radius - bubbleHeight; // Move up from head center
+            for (let attempt = 0; attempt < 20; attempt++) {
+                const radius = 20 + attempt * 6;
+                const placement = Math.random();
+                let angle: number;
 
-                // Clamp to panel bounds
-                bubbleX = Math.max(padding, Math.min(width - bubbleWidth - padding, bubbleX));
-                bubbleY = Math.max(padding, Math.min(height - bubbleHeight - padding, bubbleY));
+                if (placement < 0.7) { // Top
+                    angle = Math.PI/2 + (Math.random() - 0.5) * Math.PI/2.5;
+                } else if (placement < 0.9) { // Sides
+                    angle = Math.random() > 0.5 ? (Math.PI / 6) * Math.random() : (5 * Math.PI / 6) + (Math.PI / 6) * Math.random();
+                } else { // Bottom
+                    angle = -Math.PI/2 + (Math.random() - 0.5) * Math.PI/4;
+                }
+                
+                bubbleX = (speakerFace.x + speakerFace.width / 2) + Math.cos(angle) * radius - bubbleWidth / 2;
+                bubbleY = (speakerFace.y + speakerFace.height / 2) - Math.sin(angle) * radius - (angle > 0 ? bubbleHeight : 0);
 
                 const currentRect = { x: bubbleX, y: bubbleY, width: bubbleWidth, height: bubbleHeight };
 
-                // Check for collision with other bubbles AND if it's above the character's head
-                if ((currentRect.y + currentRect.height < headTopY - 10) && !occupiedRects.some(rect => checkCollision(rect, currentRect))) {
+                const isOutOfBounds = 
+                    (currentRect.x < -ALLOW_OVERFLOW_SIDES) ||
+                    (currentRect.x + currentRect.width > width + ALLOW_OVERFLOW_SIDES) ||
+                    (currentRect.y < 0 && !ALLOW_OVERFLOW_TOP) ||
+                    (currentRect.y + currentRect.height > height);
+
+                if (isOutOfBounds) continue;
+
+                const isColliding = occupiedRects.some(rect => checkCollision(rect, currentRect));
+                if (!isColliding) {
                     foundPosition = true;
                     break;
                 }
             }
             
-            if (!foundPosition) { // Fallback if no non-colliding spot is found
-                // Place directly above head, then try to shift if needed
-                bubbleY = Math.max(padding, headTopY - bubbleHeight - 15);
-                bubbleX = speakerHeadX - bubbleWidth / 2;
-                bubbleX = Math.max(padding, Math.min(width - bubbleWidth - padding, bubbleX));
-
-                let currentRect = { x: bubbleX, y: bubbleY, width: bubbleWidth, height: bubbleHeight };
-                let tries = 0;
-                while(occupiedRects.some(rect => checkCollision(rect, currentRect)) && tries < 5){
-                     bubbleX += (tries % 2 === 0 ? 1 : -1) * (bubbleWidth / 4);
-                     bubbleX = Math.max(padding, Math.min(width - bubbleWidth - padding, bubbleX));
-                     currentRect.x = bubbleX;
-                     tries++;
-                }
+            if (!foundPosition) {
+                bubbleY = Math.max((ALLOW_OVERFLOW_TOP ? -bubbleHeight/2 : padding), speakerFace.y - bubbleHeight - 15);
+                bubbleX = speakerFace.x + speakerFace.width/2 - bubbleWidth/2;
             }
 
-            const currentRect = { x: bubbleX, y: bubbleY, width: bubbleWidth, height: bubbleHeight };
-            occupiedRects.push(currentRect);
+            const finalRect = { x: bubbleX, y: bubbleY, width: bubbleWidth, height: bubbleHeight };
+            occupiedRects.push(finalRect);
             
-            const tailTip = { x: speakerHeadX, y: speakerHeadY };
-            const pathData = createBubblePathWithTail(currentRect, tailTip);
+            const tailTip = { x: speakerFace.x + speakerFace.width / 2, y: speakerFace.y + speakerFace.height / 2 };
+            const pathData = createBubblePathWithTail(finalRect, tailTip);
 
             bubbles.push(
                 <g key={`dialogue-${index}`}>
                     <path d={pathData} fill="white" stroke={outlineColor} strokeWidth={outlineWidth / 2} />
-                    <text x={bubbleX + padding} y={bubbleY + padding + fontSize} fontFamily={comicFontFamily} fontSize={fontSize} fill={outlineColor} fontWeight="bold" style={{ whiteSpace: 'pre', userSelect: 'none' }}>
+                    <text x={finalRect.x + padding} y={finalRect.y + padding + fontSize} fontFamily={comicFontFamily} fontSize={fontSize} fill={outlineColor} fontWeight="bold" style={{ whiteSpace: 'pre', userSelect: 'none' }}>
                         {lines.map((line, lineIndex) => (
-                            <tspan key={lineIndex} x={bubbleX + padding} dy={lineIndex > 0 ? lineSpacing : 0}>{line}</tspan>
+                            <tspan key={lineIndex} x={finalRect.x + padding} dy={lineIndex > 0 ? lineSpacing : 0}>{line}</tspan>
                         ))}
                     </text>
                 </g>
             );
         });
         return bubbles;
-    }, [panel.dialogues, panel.characters, panel.characterIdsInPanel, width, height, minComicFontSize, maxComicFontSize, comicFontFamily]);
+    }, [panel.dialogues, panel.characterIdsInPanel, composedCharacters, width, height, minComicFontSize, maxComicFontSize, comicFontFamily]);
 
 
     if (layer === 'content') {
@@ -200,13 +286,20 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
                     <rect x="0" y="0" width={width} height={height} fill={panel.backgroundColor} />
 
                     {panel.proceduralBackground ? (
-                        <g transform={`scale(${width / panel.proceduralBackground.canvasWidth}, ${height / panel.proceduralBackground.canvasHeight})`}>
+                         <svg
+                            x="0"
+                            y="0"
+                            width={width}
+                            height={height}
+                            viewBox={`0 0 ${panel.proceduralBackground.canvasWidth} ${panel.proceduralBackground.canvasHeight}`}
+                            preserveAspectRatio="xMidYMid slice"
+                        >
                             <ProceduralBackgroundRenderer
                                 background={panel.proceduralBackground}
                                 viewBox={{ x: 0, y: 0, width: panel.proceduralBackground.canvasWidth, height: panel.proceduralBackground.canvasHeight }}
                                 onViewBoxChange={() => {}} // Not interactive in panel
                             />
-                        </g>
+                        </svg>
                     ) : (
                         <>
                             {panel.backgroundImageB64 && (
@@ -217,7 +310,7 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
 
                     {!panel.isNanoBananaOnly && (
                         <g transform={`translate(${width / 2}, ${height / 2}) scale(${width / VIEWBOX_WIDTH_BASE}, ${height / VIEWBOX_HEIGHT})`}>
-                            {panel.characters.map((charInstance, charIndex) =>
+                            {(composedCharacters || panel.characters).map((charInstance, charIndex) =>
                                 <Character
                                     key={`${panel.id}-${charIndex}`}
                                     charInstance={charInstance}
