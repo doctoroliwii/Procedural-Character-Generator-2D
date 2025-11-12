@@ -3,6 +3,7 @@
 
 
 
+
 export type BackgroundType = 'exterior' | 'interior';
 export type TextureType = 'solid' | 'grass' | 'dirt' | 'tiles' | 'wood' | 'brick' | 'wallpaper' | 'carpet' | 'concrete';
 export type CloudStyle = 'fluffy' | 'wispy' | 'stormy' | 'none';
@@ -240,17 +241,23 @@ export interface CharacterParams {
   pupilSizeRatio: number;    // % of eye size
   // FIX: Corrected typo from upperEylidCoverage to upperEyelidCoverage
   upperEyelidCoverage: number; // % of eye height, renamed from eyelidCoverage
-  // FIX: Corrected typo from lowerEylidCoverage to lowerEylidCoverage
+  // FIX: Corrected typo from lowerEylidCoverage to lowerEyelidCoverage
   lowerEyelidCoverage: number; // % of eye height, for the bottom lid
-  eyeStyle: 'realistic' | 'blocky';
+  eyeStyle: 'realistic' | 'blocky' | 'circle' | 'dot' | 'square' | 'triangle';
   eyeTracking: boolean;
   eyelashes: boolean;
   eyelashCount: number;
   eyelashLength: number;
   eyelashAngle: number;
+  glint: boolean;
+  glintSizeRatio: number;
+  glintXOffsetRatio: number;
+  glintYOffsetRatio: number;
+  glintOpacity: number;
   mouthWidthRatio: number;   // % of head width
   mouthYOffsetRatio: number; // % of head height/2 from center
   mouthBend: number;
+  eyebrows: boolean;
   eyebrowWidthRatio: number; // % of head width
   eyebrowHeightRatio: number;// % of eye size
   eyebrowYOffsetRatio: number;// % of head height from eye line
@@ -286,6 +293,10 @@ export interface CharacterParams {
   hair: boolean;
   backHairWidthRatio: number;
   backHairHeightRatio: number;
+  backHairShape: 'smooth' | 'afro' | 'square' | 'triangle' | 'oval';
+  hairCurliness: number;
+  hairCurlFrequency: number;
+  hairCurlAmplitude: number;
   fringeHeightRatio: number;
   viewAngle: number;
   bodyColor: string;
@@ -408,11 +419,24 @@ export interface StoryCircleStep {
   description: string;
 }
 
+export interface StoryArc {
+  id: string;
+  title: RichText;
+  storyCircle: StoryCircleStep[];
+}
+
+export interface Season {
+  id: string;
+  seasonNumber: number;
+  title: RichText;
+  storyArcs: StoryArc[];
+}
+
 export interface Story {
   genre: RichText;
   stakes: RichText;
   characterProfileIds: string[];
-  storyCircle: StoryCircleStep[];
+  seasons: Season[];
 }
 
 export interface Project {
@@ -423,6 +447,11 @@ export interface Project {
   lore: Lore | null;
   characterProfiles: CharacterProfile[];
   comicPages: ComicPanelData[][];
+}
+
+export interface UserProfile {
+  fullName: string;
+  username: string;
 }
 
 // --- NEW SCRIPTING SYSTEM TYPES ---

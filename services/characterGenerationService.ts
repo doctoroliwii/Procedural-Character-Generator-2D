@@ -15,7 +15,7 @@ const getRandomElement = <T>(arr: T[]): T => {
 };
 
 export const getRandomParamValue = (param: CharacterParamKey | ColorParamKey, currentParams?: CharacterParams): any => {
-    const configKey = param as Exclude<CharacterParamKey, 'bodyOutlines' | 'eyeOutlines' | 'eyeStyle' | 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor' | 'headShape' | 'torsoShape' | 'eyeTracking' | 'pelvisShape' | 'eyelashes' | 'hair' | 'hairColor'>;
+    const configKey = param as Exclude<CharacterParamKey, 'bodyOutlines' | 'eyeOutlines' | 'eyeStyle' | 'bodyColor' | 'irisColor' | 'outlineColor' | 'pupilColor' | 'headShape' | 'torsoShape' | 'eyeTracking' | 'pelvisShape' | 'eyelashes' | 'hair' | 'hairColor' | 'glint' | 'backHairShape'>;
     if (configKey in PARAM_CONFIGS) {
         const config = PARAM_CONFIGS[configKey];
         // Special dynamic range logic for certain parameters
@@ -44,6 +44,10 @@ export const getRandomParamValue = (param: CharacterParamKey | ColorParamKey, cu
         case 'eyelashes':
         case 'hair':
             return Math.random() < 0.5;
+        case 'glint':
+            return Math.random() < 0.9;
+        case 'eyebrows':
+            return Math.random() < 0.85; // Most characters have eyebrows
         // Shapes (string enums)
         case 'headShape':
             return getRandomElement(['ellipse', 'circle', 'square', 'triangle', 'inverted-triangle']);
@@ -52,7 +56,9 @@ export const getRandomParamValue = (param: CharacterParamKey | ColorParamKey, cu
         case 'pelvisShape':
             return getRandomElement(['rectangle', 'horizontal-oval']);
         case 'eyeStyle':
-            return getRandomElement(['realistic', 'blocky']);
+            return getRandomElement(['realistic', 'blocky', 'circle', 'dot', 'square', 'triangle']);
+        case 'backHairShape':
+            return getRandomElement(['smooth', 'afro', 'square', 'triangle', 'oval']);
         // Colors
         case 'bodyColor': {
             const fantasticColors = [
@@ -90,11 +96,12 @@ export const getRandomParamValue = (param: CharacterParamKey | ColorParamKey, cu
 
 export const generateRandomAppearanceParams = (baseParams?: CharacterParams | null): CharacterParams => {
     const params = { ...(baseParams || INITIAL_PARAMS) };
-    const allKeys = [...Object.keys(PARAM_CONFIGS), 'bodyOutlines', 'eyeOutlines', 'eyeStyle', 'headShape', 'torsoShape', 'eyeTracking', 'pelvisShape', 'eyelashes', 'hair', 'bodyColor', 'hairColor', 'irisColor', 'outlineColor', 'pupilColor'];
+    const allKeys = [...Object.keys(PARAM_CONFIGS), 'bodyOutlines', 'eyeOutlines', 'eyeStyle', 'headShape', 'torsoShape', 'eyeTracking', 'pelvisShape', 'eyelashes', 'hair', 'eyebrows', 'glint', 'bodyColor', 'hairColor', 'irisColor', 'outlineColor', 'pupilColor', 'backHairShape'];
     const processed = new Set<string>();
 
     for (const key of allKeys) {
         if (processed.has(key as string)) continue;
+        if (key === 'viewAngle') continue; // Skip randomizing viewAngle
 
         const value = getRandomParamValue(key as CharacterParamKey | ColorParamKey, params);
         (params as any)[key] = value;
@@ -124,6 +131,16 @@ export const generateRandomAppearanceParams = (baseParams?: CharacterParams | nu
             processed.add(symmetricKey);
         }
     }
+    
+    // If hair is enabled, sometimes add curls
+    if (params.hair && Math.random() < 0.3) {
+        params.hairCurliness = getRandomNumber(20, 80);
+        params.hairCurlFrequency = getRandomNumber(5, 30);
+        params.hairCurlAmplitude = getRandomNumber(5, 25);
+    } else {
+        params.hairCurliness = 0;
+    }
+
     return params;
 };
 

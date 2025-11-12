@@ -8,7 +8,7 @@ interface MenuItem {
 }
 
 interface MenuProps {
-  title: string;
+  title: React.ReactNode;
   items: MenuItem[];
 }
 
@@ -35,19 +35,21 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
       setActiveSubMenu(null);
     }
   };
+  
+  const isTitleString = typeof title === 'string';
 
   return (
     <div className="relative" ref={menuRef} onMouseLeave={() => { setIsOpen(false); setActiveSubMenu(null); }}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         onMouseEnter={() => setIsOpen(true)}
-        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors duration-150 focus:outline-none select-none ${isOpen ? 'bg-condorito-red text-white' : 'text-condorito-brown hover:bg-panel-border/50'}`}
+        className={`transition-colors duration-150 focus:outline-none select-none ${isTitleString ? `px-3 py-1 text-xs font-medium rounded-md ${isOpen ? 'bg-condorito-red text-white' : 'text-condorito-brown hover:bg-panel-border/50'}` : ''}`}
       >
         {title}
       </button>
       {isOpen && (
         <div 
-            className="absolute top-full left-0 w-48 bg-panel-back/95 backdrop-blur-md rounded-md shadow-lg border border-panel-header py-1 z-50"
+            className="absolute top-full right-0 w-48 bg-panel-back/95 backdrop-blur-md rounded-md shadow-lg border border-panel-header py-1 z-50"
         >
           {items.map(item => (
             <div 
@@ -58,10 +60,10 @@ const Menu: React.FC<MenuProps> = ({ title, items }) => {
             >
               <button
                 onClick={() => handleItemClick(item)}
-                disabled={item.disabled || !item.action}
+                disabled={item.disabled}
                 className="w-full flex justify-between items-center text-left px-4 py-2 text-xs text-condorito-brown hover:bg-condorito-red hover:text-white transition-colors duration-150 select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-condorito-brown"
               >
-                <span>{item.label}</span>
+                <span className={item.disabled ? 'text-condorito-brown/60' : ''}>{item.label}</span>
                 {item.subItems && <span className="text-xs">▶</span>}
               </button>
               {item.subItems && activeSubMenu === item.label && (

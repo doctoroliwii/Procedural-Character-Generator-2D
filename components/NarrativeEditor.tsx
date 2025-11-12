@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Lore, CharacterProfile, Story, Location, RichText, Segment } from '../types';
+import type { Lore, CharacterProfile, Story, Location, RichText, Segment, Season, StoryArc, StoryCircleStep } from '../types';
 import { DiceIcon, ImageIcon } from './icons';
 import { generateNarrativeField, generateLocation, generateLocationImage } from '../services/geminiService';
 import { PanelKey } from './ControlPanel';
@@ -20,6 +20,7 @@ interface LoreEditorProps {
 const richTextToString = (value: RichText | undefined): string => value?.map(s => s.text).join('') || '';
 const stringToRichText = (text: string, source: 'user' | 'ai'): RichText => [{ text, source }];
 const EMPTY_LORE: Lore = { genre: [], rules: [], locations: [], history: [] };
+const EMPTY_STORY: Story = { genre: [], stakes: [], characterProfileIds: [], seasons: [] };
 
 // --- RichTextEditor Component ---
 interface RichTextEditorProps {
@@ -34,11 +35,9 @@ interface RichTextEditorProps {
 }
 
 const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({ label, value, onChange, onBlur, rows = 3, onGenerate, isGenerating, isSingleLine = false }) => {
-    // Convert RichText to a simple string for the textarea.
     const stringValue = richTextToString(value);
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-        // When the user types, we create a new RichText object with the source 'user'.
         onChange([{ text: e.target.value, source: 'user' }]);
     };
 
@@ -46,32 +45,32 @@ const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({ label, value
         value: stringValue,
         onChange: handleChange,
         onBlur: onBlur,
-        // FIX: Changed spellCheck to a boolean to match the expected 'Booleanish' type.
         spellCheck: false,
         className: "w-full p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red transition",
-        style: { paddingRight: onGenerate ? '2.5rem' : '0.5rem' }
     };
 
     return (
         <div>
             <label className="select-none block text-xs font-semibold text-condorito-brown mb-1">{label}</label>
-            <div className="relative">
-                {isSingleLine ? (
-                    <input type="text" {...commonProps} className={`${commonProps.className} resize-none`} />
-                ) : (
-                    <textarea rows={rows} {...commonProps} className={`${commonProps.className} resize-y`} />
-                )}
+            <div className="flex items-start gap-2">
                 {onGenerate && (
                     <button
                         onClick={onGenerate}
                         disabled={isGenerating}
-                        className="absolute top-1.5 right-1.5 p-1 bg-condorito-red/10 text-condorito-red rounded-full hover:bg-condorito-red/20 disabled:bg-panel-header disabled:text-panel-border disabled:cursor-wait transition-colors"
+                        className="mt-1.5 p-1.5 bg-condorito-red/10 text-condorito-red rounded-full hover:bg-condorito-red/20 disabled:bg-panel-header disabled:text-panel-border disabled:cursor-wait transition-colors"
                         aria-label={`Generate ${label}`}
                         title={`Generate ${label}`}
                     >
                         <DiceIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
                     </button>
                 )}
+                <div className="relative flex-grow">
+                    {isSingleLine ? (
+                        <input type="text" {...commonProps} className={`${commonProps.className} resize-none`} />
+                    ) : (
+                        <textarea rows={rows} {...commonProps} className={`${commonProps.className} resize-y`} />
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -81,7 +80,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({ label, value
 // --- UI Components ---
 type MainTab = 'lore' | 'story';
 type LoreSubTab = 'core' | 'locations';
-type StorySubTab = 'premise' | 'plot';
+type StorySubTab = 'premise' | 'structure';
 
 const LORE_PRESETS_STORAGE_KEY = 'universe-lore-presets';
 
@@ -98,8 +97,8 @@ const MainTabButton = ({ tabName, label, activeTab, setActiveTab }: { tabName: M
     >{label}</button>
 );
 
-const SubTabButton = ({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) => (
-    <button onClick={onClick} className={`select-none px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-condorito-red text-white shadow-sm' : 'bg-panel-header text-condorito-brown hover:bg-panel-border'}`}>
+const SubTabButton = ({ label, active, onClick, disabled }: { label: string, active: boolean, onClick: () => void, disabled?: boolean }) => (
+    <button onClick={onClick} disabled={disabled} className={`select-none px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${active ? 'bg-condorito-red text-white shadow-sm' : 'bg-panel-header text-condorito-brown hover:bg-panel-border'} disabled:opacity-50 disabled:cursor-not-allowed`}>
         {label}
     </button>
 );
@@ -222,7 +221,7 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
                 setLocalLore(current => ({ ...(current || emptyLore), [subKey]: richText }));
             } else if (mainKey === 'story') {
                  setLocalStory(current => {
-                    const baseStory: Story = current ?? { genre: [], stakes: [], characterProfileIds:[], storyCircle:[] };
+                    const baseStory: Story = current ?? { genre: [], stakes: [], characterProfileIds:[], seasons:[] };
                     return { ...baseStory, [subKey]: richText };
                 });
             }
@@ -370,6 +369,58 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
             });
         }
     };
+    
+    const handleAddSeason = () => {
+        setLocalStory(current => {
+            const story = current || EMPTY_STORY;
+            const newSeasonNumber = story.seasons.length > 0 ? Math.max(...story.seasons.map(s => s.seasonNumber)) + 1 : 1;
+            const newSeason: Season = {
+                id: `season-${Date.now()}`,
+                seasonNumber: newSeasonNumber,
+                title: stringToRichText(`Temporada ${newSeasonNumber}`, 'user'),
+                storyArcs: [],
+            };
+            return { ...story, seasons: [...story.seasons, newSeason] };
+        });
+    };
+
+    const handleDeleteSeason = (seasonId: string) => {
+        setLocalStory(current => {
+            if (!current) return null;
+            return { ...current, seasons: current.seasons.filter(s => s.id !== seasonId) };
+        });
+    };
+
+    const handleAddStoryArc = (seasonId: string) => {
+        setLocalStory(current => {
+            if (!current) return null;
+            const newSeasons = current.seasons.map(s => {
+                if (s.id === seasonId) {
+                    const newArc: StoryArc = {
+                        id: `arc-${Date.now()}`,
+                        title: stringToRichText(`Capítulo ${s.storyArcs.length + 1}`, 'user'),
+                        storyCircle: [],
+                    };
+                    return { ...s, storyArcs: [...s.storyArcs, newArc] };
+                }
+                return s;
+            });
+            return { ...current, seasons: newSeasons };
+        });
+    };
+    
+    const handleDeleteStoryArc = (seasonId: string, arcId: string) => {
+        setLocalStory(current => {
+            if (!current) return null;
+            const newSeasons = current.seasons.map(s => {
+                if (s.id === seasonId) {
+                    return { ...s, storyArcs: s.storyArcs.filter(a => a.id !== arcId) };
+                }
+                return s;
+            });
+            return { ...current, seasons: newSeasons };
+        });
+    };
 
 
     return (
@@ -508,12 +559,12 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
                         <h3 className="font-bold text-sm text-condorito-brown">Historia</h3>
                         <div className="flex gap-2 p-1 bg-panel-header rounded-lg">
                             <SubTabButton label="Premisa" active={activeSubTabs.story === 'premise'} onClick={() => setActiveSubTabs(s => ({...s, story: 'premise'}))} />
-                            <SubTabButton label="Trama" active={activeSubTabs.story === 'plot'} onClick={() => setActiveSubTabs(s => ({...s, story: 'plot'}))} />
+                            <SubTabButton label="Estructura" active={activeSubTabs.story === 'structure'} onClick={() => setActiveSubTabs(s => ({...s, story: 'structure'}))} disabled={!localStory} />
                         </div>
 
                         {activeSubTabs.story === 'premise' && <div className="space-y-4 p-3 bg-panel-back rounded-b-lg">
-                            <RichTextEditor isSingleLine label="Género de la Historia" value={localStory?.genre} onChange={v => setLocalStory(s => ({...(s || { genre: [], stakes: [], characterProfileIds:[], storyCircle:[] }), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('story.genre')} isGenerating={isFieldLoading.has('story.genre')}/>
-                            <RichTextEditor label="Qué está en juego (Stakes)" value={localStory?.stakes} onChange={v => setLocalStory(s => ({...(s || { genre: [], stakes: [], characterProfileIds:[], storyCircle:[] }), stakes: v}))} onBlur={syncStateToParent} rows={2} onGenerate={() => handleGenerateField('story.stakes')} isGenerating={isFieldLoading.has('story.stakes')}/>
+                            <RichTextEditor isSingleLine label="Género de la Historia" value={localStory?.genre} onChange={v => setLocalStory(s => ({...(s || EMPTY_STORY), genre: v}))} onBlur={syncStateToParent} onGenerate={() => handleGenerateField('story.genre')} isGenerating={isFieldLoading.has('story.genre')}/>
+                            <RichTextEditor label="Qué está en juego (Stakes)" value={localStory?.stakes} onChange={v => setLocalStory(s => ({...(s || EMPTY_STORY), stakes: v}))} onBlur={syncStateToParent} rows={2} onGenerate={() => handleGenerateField('story.stakes')} isGenerating={isFieldLoading.has('story.stakes')}/>
                             <div className="space-y-2">
                                 <h4 className="font-semibold text-xs text-condorito-brown">Personajes en la Historia</h4>
                                 {characterProfiles.length === 0 ? (
@@ -522,20 +573,73 @@ const LoreEditor: React.FC<LoreEditorProps> = ({ lore, onLoreChange, characterPr
                                     <div key={c.id} className="flex items-center gap-2"><input type="checkbox" id={`char-check-${c.id}`} checked={localStory?.characterProfileIds.includes(c.id) || false} onChange={e => {
                                         const ids = localStory?.characterProfileIds || [];
                                         const newIds = e.target.checked ? [...ids, c.id] : ids.filter(id => id !== c.id);
-                                        setLocalStory(s => ({...(s || { genre: [], stakes: [], storyCircle: [] }), characterProfileIds: newIds}));
+                                        setLocalStory(s => ({...(s || EMPTY_STORY), characterProfileIds: newIds}));
                                     }} onBlur={syncStateToParent} className="h-4 w-4 rounded border-panel-header text-condorito-red focus:ring-condorito-red" /><label htmlFor={`char-check-${c.id}`} className="select-none text-xs">{richTextToString(c.name)}</label></div>
                                 ))}
                             </div>
                             <button onClick={() => handleGenerate('story', { characterIds: localStory?.characterProfileIds, genre: localStory?.genre, stakes: localStory?.stakes })} disabled={!lore || (localStory?.characterProfileIds || []).length === 0 || !!isLoading} className="w-full relative overflow-hidden bg-condorito-red text-white font-semibold py-2 rounded-md hover:brightness-95 disabled:bg-panel-border disabled:cursor-not-allowed transition">
-                              <span className="relative z-10">{isLoading === 'story' ? 'Generating...' : '🎲 Generar Trama'}</span>
+                              <span className="relative z-10">{isLoading === 'story' ? 'Generando...' : '🎲 Generar Primera Trama'}</span>
                               {isLoading === 'story' && <div className="absolute inset-0 loading-bar-shimmer"></div>}
                             </button>
                         </div>}
 
-                        {activeSubTabs.story === 'plot' && <div className="p-3 bg-panel-back rounded-b-lg">
-                            {story?.storyCircle ? <div className="space-y-3">
-                                {story.storyCircle.sort((a,b) => a.step - b.step).map(s => <div key={s.step}><strong className="text-xs uppercase font-bold text-condorito-red">{s.step}. {s.title}</strong><p className="text-xs text-condorito-brown mt-1">{s.description}</p></div>)}
-                            </div> : <p className="text-xs text-center text-condorito-brown py-4">Genere una premisa para ver la trama aquí.</p>}
+                        {activeSubTabs.story === 'structure' && localStory && <div className="p-3 bg-panel-back rounded-b-lg space-y-4">
+                            {localStory.seasons.map((season) => (
+                                <div key={season.id} className="p-3 border border-panel-header rounded-lg bg-white space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-sm text-condorito-brown">T.{season.seasonNumber}:</span>
+                                        <input 
+                                            type="text"
+                                            value={richTextToString(season.title)}
+                                            onChange={e => {
+                                                const newTitle = stringToRichText(e.target.value, 'user');
+                                                setLocalStory(s => s ? ({ ...s, seasons: s.seasons.map(se => se.id === season.id ? { ...se, title: newTitle } : se) }) : null);
+                                            }}
+                                            onBlur={syncStateToParent}
+                                            className="flex-grow p-1 border-b border-transparent hover:border-panel-header rounded-sm text-xs focus:ring-0 focus:border-condorito-red transition"
+                                        />
+                                        <button onClick={() => handleDeleteSeason(season.id)} className="p-1.5 text-gray-400 hover:bg-condorito-red/10 hover:text-condorito-red rounded-full transition-colors" title="Eliminar Temporada">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+                                        </button>
+                                    </div>
+
+                                    <div className="pl-4 border-l-2 border-condorito-red/20 space-y-3">
+                                        {season.storyArcs.map((arc, arcIndex) => (
+                                            <div key={arc.id} className="p-2 border border-panel-header rounded-lg bg-panel-header/50">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-xs text-condorito-brown/80">C.{arcIndex + 1}:</span>
+                                                    <input
+                                                        type="text"
+                                                        value={richTextToString(arc.title)}
+                                                        onChange={e => {
+                                                            const newTitle = stringToRichText(e.target.value, 'user');
+                                                            setLocalStory(s => s ? ({ ...s, seasons: s.seasons.map(se => se.id === season.id ? { ...se, storyArcs: se.storyArcs.map(a => a.id === arc.id ? {...a, title: newTitle} : a) } : se) }) : null);
+                                                        }}
+                                                        onBlur={syncStateToParent}
+                                                        className="flex-grow p-1 bg-transparent border-b border-transparent hover:border-panel-border focus:border-condorito-red focus:ring-0 text-xs"
+                                                    />
+                                                     <button onClick={() => handleDeleteStoryArc(season.id, arc.id)} className="p-1.5 text-gray-400 hover:bg-condorito-red/10 hover:text-condorito-red rounded-full transition-colors" title="Eliminar Capítulo">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+                                                    </button>
+                                                </div>
+
+                                                <div className="pt-3 mt-3 border-t border-panel-border">
+                                                    {(arc.storyCircle && arc.storyCircle.length > 0) ? (
+                                                        <div className="space-y-3">{arc.storyCircle.sort((a, b) => a.step - b.step).map(s => <div key={s.step}><strong className="text-xs uppercase font-bold text-condorito-red">{s.step}. {s.title}</strong><p className="text-xs text-condorito-brown mt-1">{s.description}</p></div>)}</div>
+                                                    ) : (
+                                                        <button onClick={() => handleGenerate('story', { ...localStory, seasonId: season.id, storyArcId: arc.id })} disabled={!!isLoading} className="w-full relative overflow-hidden bg-condorito-red/80 text-white font-semibold py-1.5 text-xs rounded-md hover:bg-condorito-red disabled:bg-panel-border disabled:cursor-not-allowed transition">
+                                                            <span className="relative z-10">{isLoading === 'story' ? 'Generando...' : '🎲 Generar Trama'}</span>
+                                                            {isLoading === 'story' && <div className="absolute inset-0 loading-bar-shimmer"></div>}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                         <button onClick={() => handleAddStoryArc(season.id)} className="w-full py-1.5 text-xs font-semibold bg-condorito-green/80 text-white rounded-md hover:bg-condorito-green transition-colors">+ Añadir Capítulo</button>
+                                    </div>
+                                </div>
+                            ))}
+                            <button onClick={handleAddSeason} className="w-full py-2 text-xs font-semibold bg-condorito-green text-white rounded-md hover:brightness-95 transition-colors mt-4">+ Añadir Temporada</button>
                         </div>}
                     </div>
                 )}

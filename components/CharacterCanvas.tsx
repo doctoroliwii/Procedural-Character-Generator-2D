@@ -14,6 +14,7 @@ interface CharacterCanvasProps {
   comicLanguage: string;
   comicFontFamily: string;
   comicTheme: string;
+  comicPanelCornerRadius: number;
   canvasResetToken: number;
   viewBox: { x: number; y: number; width: number; height: number; };
   onViewBoxChange: (updater: { x: number; y: number; width: number; height: number; } | ((prev: { x: number; y: number; width: number; height: number; }) => { x: number; y: number; width: number; height: number; })) => void;
@@ -21,7 +22,7 @@ interface CharacterCanvasProps {
 }
 
 
-const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => Promise<void> }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, canvasResetToken, viewBox, onViewBoxChange, panMode = 'direct' }, ref) => {
+const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => Promise<void> }), CharacterCanvasProps>(({ characters, comicPanels, backgroundOptions, showBoundingBoxes, comicAspectRatio, minComicFontSize, maxComicFontSize, comicLanguage, comicFontFamily, comicTheme, comicPanelCornerRadius, canvasResetToken, viewBox, onViewBoxChange, panMode = 'direct' }, ref) => {
   const VIEWBOX_WIDTH_BASE = 400;
   const VIEWBOX_HEIGHT = 700;
   
@@ -317,10 +318,10 @@ const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => Promise<v
             style={{ cursor: cursorStyle }}
         >
             <defs>
-                <radialGradient id="background-gradient" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                <linearGradient id="background-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
                     <stop offset="0%" style={{ stopColor: backgroundOptions.color1 }} />
                     <stop offset="100%" style={{ stopColor: backgroundOptions.color2 }} />
-                </radialGradient>
+                </linearGradient>
             </defs>
             <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#background-gradient)" />
 
@@ -342,6 +343,7 @@ const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => Promise<v
                                 instanceKey={`${panel.id}-${index}`}
                                 comicLanguage={comicLanguage}
                                 comicFontFamily={comicFontFamily}
+                                comicPanelCornerRadius={comicPanelCornerRadius}
                                 layer="content"
                             />
                         )}
@@ -363,6 +365,7 @@ const CharacterCanvas = forwardRef<({ export: (pageNumber?: number) => Promise<v
                                 instanceKey={`${panel.id}-${index}`}
                                 comicLanguage={comicLanguage}
                                 comicFontFamily={comicFontFamily}
+                                comicPanelCornerRadius={comicPanelCornerRadius}
                                 layer="dialogue"
                             />
                         )}

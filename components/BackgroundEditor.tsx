@@ -400,8 +400,8 @@ const BackgroundEditor: React.FC<BackgroundEditorProps> = ({
                </div>
             )}
           </div>
-          <div className="w-1/2 h-full relative bg-condorito-pink p-4 flex items-center justify-center">
-            <div className="w-full h-full shadow-lg rounded-lg overflow-hidden">
+          <div className="w-1/2 h-full relative bg-condorito-pink">
+            <div className="w-full h-full shadow-lg">
                 <ProceduralBackgroundRenderer 
                     background={selectedBg} 
                     viewBox={viewBox}

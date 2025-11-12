@@ -1,13 +1,12 @@
-
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment, Project, NarrativeScript, NarrativePanelScript, ProceduralBackground, NarrativePageScript } from './types';
+import type { CharacterParams, CharacterParamKey, ColorParamKey, BackgroundOptions, CharacterInstance, ComicPanelData, Lore, CharacterProfile, Story, RichText, Segment, Project, NarrativeScript, NarrativePanelScript, ProceduralBackground, NarrativePageScript, Season, StoryArc, UserProfile } from './types';
 import { INITIAL_PARAMS, PARAM_CONFIGS } from './constants';
 import { INITIAL_BACKGROUND } from './constants/backgroundDefaults';
 import CharacterCanvas from './components/CharacterCanvas';
 import ControlPanel, { PanelKey, PanelState } from './components/ControlPanel';
 import MenuBar from './components/MenuBar';
 import WelcomeModal from './components/WelcomeModal';
+import LoginScreen from './components/LoginScreen';
 import { generateComicScript, getTrendingTopic, generateLore, generateStory, generateComicScriptFromStory, generatePanelBackground, generateFullCharacterProfile, generateCharacterName, generateSceneDescription, generateVariantPanelBackground, generateFullComicPanelImage } from './services/geminiService';
 import { CloseIcon, WarningIcon } from './components/icons';
 import { generateRandomParams, generateRandomAppearanceParams } from './services/characterGenerationService';
@@ -40,7 +39,7 @@ const safeStringify = (value: any): string => {
 };
 
 const LORE_HEADERS: (keyof Lore)[] = ['genre', 'rules', 'history', 'locations'];
-const STORY_HEADERS: (keyof Story)[] = ['genre', 'stakes', 'characterProfileIds', 'storyCircle'];
+const STORY_HEADERS: (keyof Story)[] = ['genre', 'stakes', 'characterProfileIds', 'seasons'];
 const CHARACTER_HEADERS: (keyof CharacterProfile)[] = [
   'id', 'name', 'age', 'species', 'occupation', 'originLocationId', 'skills', 'limitations', 'psychology', 'backstory', 'characterParams'
 ];
@@ -168,6 +167,7 @@ function dataToCsv(data: any, type: CsvDataType): string {
 
 
 function App() {
+  const [authStatus, setAuthStatus] = useState<'checking' | 'unauthenticated' | 'authenticated'>('checking');
   const [appState, setAppState] = useState<'welcome' | 'editing'>('welcome');
   const [characters, setCharacters] = useState<CharacterInstance[]>([]);
   const [backgroundOptions, setBackgroundOptions] = useState<BackgroundOptions>({ color1: '#ffffff', color2: '#F9DCC9', animation: true, });
@@ -195,6 +195,7 @@ function App() {
   const [maxComicFontSize, setMaxComicFontSize] = useState(18);
   const [comicLanguage, setComicLanguage] = useState('es');
   const [comicFontFamily, setComicFontFamily] = useState('Comic Neue');
+  const [comicPanelCornerRadius, setComicPanelCornerRadius] = useState(10);
   
   // Custom Comic State
   const [comicMode, setComicMode] = useState<'simple' | 'custom'>('simple');
@@ -220,6 +221,9 @@ function App() {
   const [proceduralBackgrounds, setProceduralBackgrounds] = useState<ProceduralBackground[]>([]);
   const [selectedBackgroundId, setSelectedBackgroundId] = useState<string | null>(null);
 
+  // User Profile State
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
   const comicCanvasRef = useRef<{ export: (pageNumber?: number) => Promise<void> }>(null);
 
 
@@ -232,7 +236,87 @@ function App() {
     About: { isOpen: false, position: { x: 90, y: 130 }, zIndex: 1 },
     TrendingTheme: { isOpen: false, position: { x: 250, y: 40 }, zIndex: 1 },
     ProjectSettings: { isOpen: false, position: { x: 40, y: 40 }, zIndex: 1 },
+    UserProfile: { isOpen: false, position: { x: 100, y: 140 }, zIndex: 1 },
   });
+
+  const handleUserProfileChange = (profile: UserProfile) => {
+    setUserProfile(profile);
+    try {
+      localStorage.setItem('plop_user_session', JSON.stringify(profile));
+    } catch (e) {
+      console.error("Failed to save updated user session", e);
+    }
+  };
+
+  const resetAppState = () => {
+    setAppState('welcome');
+    setCharacters([]);
+    setBackgroundOptions({ color1: '#ffffff', color2: '#F9DCC9', animation: true });
+    setShowBoundingBoxes(true);
+    setCanvasResetToken(t => t + 1);
+    setViewBox({ x: 0, y: 0, width: 400, height: 700 });
+    setComicTheme('Típico chiste chileno');
+    setComicScene('Dos amigos conversando en un parque con la cordillera de los Andes de fondo');
+    setNumComicPanels(4);
+    setNumComicPages(1);
+    setComicPanels(null);
+    setComicMode('simple');
+    setLore(null);
+    setCharacterProfiles([]);
+    setSelectedCharId(null);
+    setStory(null);
+    setApiError(null);
+    setProject(null);
+    setCurrentPageIndex(0);
+    setNarrativeScript(null);
+    setProceduralBackgrounds([]);
+    setSelectedBackgroundId(null);
+    setPanels(prev => {
+        const resetPanels = { ...prev };
+        for (const key in resetPanels) {
+            resetPanels[key as PanelKey].isOpen = false;
+        }
+        return resetPanels;
+    });
+  };
+
+  useEffect(() => {
+    try {
+        const session = localStorage.getItem('plop_user_session');
+        if (session) {
+            const userData = JSON.parse(session);
+            setUserProfile(userData);
+            setAuthStatus('authenticated');
+        } else {
+            setAuthStatus('unauthenticated');
+        }
+    } catch (e) {
+        console.error("Failed to parse user session", e);
+        setAuthStatus('unauthenticated');
+    }
+  }, []);
+  
+  const handleLogin = () => {
+    const defaultUser: UserProfile = { fullName: 'Condorito', username: 'condorito' };
+    try {
+        localStorage.setItem('plop_user_session', JSON.stringify(defaultUser));
+    } catch (e) {
+        console.error("Failed to save user session", e);
+    }
+    setUserProfile(defaultUser);
+    setAuthStatus('authenticated');
+  };
+
+  const handleLogout = () => {
+    try {
+        localStorage.removeItem('plop_user_session');
+    } catch (e) {
+        console.error("Failed to remove user session", e);
+    }
+    setUserProfile(null);
+    resetAppState();
+    setAuthStatus('unauthenticated');
+  };
 
   const handleUseNanoBananaOnlyChange = (value: boolean) => {
     setUseNanoBananaOnly(value);
@@ -245,18 +329,24 @@ function App() {
   };
 
   const openPanel = useCallback((key: PanelKey) => {
-    setPanels(prev => {
-        const newPanels = { ...prev };
-        const maxZ = Math.max(0, ...Object.values(newPanels).map((p: PanelState) => p.zIndex));
-        newPanels[key] = { ...newPanels[key], isOpen: true, zIndex: maxZ + 1 };
-        return newPanels;
+    setPanels(prevPanels => {
+      const maxZ = Math.max(0, ...Object.values(prevPanels).map(p => p.zIndex));
+      return {
+        ...prevPanels,
+        [key]: {
+          ...prevPanels[key],
+          isOpen: true,
+          zIndex: maxZ + 1,
+        },
+      };
     });
   }, []);
 
   // FIX: Moved panel management functions before their usage to prevent "used before declaration" errors.
   const bringToFront = useCallback((key: PanelKey) => {
     setPanels(prev => {
-        const maxZ = Math.max(...Object.values(prev).map((p: PanelState) => p.zIndex));
+        // FIX: Cast Object.values to PanelState[] to resolve potential type inference issue with `p`.
+        const maxZ = Math.max(...(Object.values(prev) as PanelState[]).map(p => p.zIndex));
         if (prev[key].zIndex === maxZ) return prev;
         const newPanels = { ...prev };
         newPanels[key] = { ...newPanels[key], zIndex: maxZ + 1 };
@@ -415,6 +505,11 @@ function App() {
       });
   };
   
+  const handleOpenProfile = useCallback(() => {
+    openPanel('UserProfile');
+    setAppState('editing');
+  }, [openPanel]);
+
   useEffect(() => {
     if (project || comicPanels !== null || panels.CharacterEditor.isOpen || panels.BackgroundEditor.isOpen) {
       setCharacters([]);
@@ -562,7 +657,7 @@ function App() {
             const charX = (panelScript.charactersInPanel.length > 1) ? (indexInPanel * 150 - (panelScript.charactersInPanel.length - 1) * 75) : 0;
             const isFlipped = panelScript.dialogues && panelScript.dialogues.length > 0 && panelScript.charactersInPanel.length > 1 && charX > 0;
             
-            panelCharacters.push({ params: newParams, x: charX, y: (Math.random() * 50), scale: 0.8, zIndex: indexInPanel + 1, isFlipped });
+            panelCharacters.push({ params: newParams, x: charX, y: 120, scale: 0.8, zIndex: indexInPanel + 1, isFlipped });
           }
         });
 
@@ -809,7 +904,13 @@ If characters are present, they should be positioned to leave empty space at the
         if (!storyToUse || !loreToUse || profilesToUse.length === 0) {
           throw new Error("Please define Lore, Characters, and a Story in the Narrative Editor first.");
         }
-        const script = await generateComicScriptFromStory(storyToUse, loreToUse, profilesToUse, numComicPanels, comicLanguage, sceneToUse);
+        
+        if (!storyToUse.seasons || storyToUse.seasons.length === 0 || !storyToUse.seasons[0].storyArcs || storyToUse.seasons[0].storyArcs.length === 0) {
+            throw new Error("La historia no tiene capítulos para generar un cómic.");
+        }
+        const storyArcToUse = storyToUse.seasons[0].storyArcs[0];
+        
+        const script = await generateComicScriptFromStory(storyArcToUse.storyCircle, loreToUse, profilesToUse, numComicPanels, comicLanguage, sceneToUse);
         
         setNarrativeScript(script);
         setSelectedPageIndex(0);
@@ -962,18 +1063,55 @@ If characters are present, they should be positioned to leave empty space at the
             });
             return newProfile;
         } else if (elementType === 'story') {
-            if (!lore || characterProfiles.length === 0) { alert("Please generate Lore and at least one Character first."); return; }
+            if (!lore) { alert("Please generate Lore first."); return; }
             const charactersInStory = characterProfiles.filter(c => context.characterIds.includes(c.id));
             if (charactersInStory.length === 0) { alert("Please select at least one character for the story."); return; }
+            
             const result = await generateStory(lore, charactersInStory, context.genre, context.stakes);
-            const newStory = { 
-                genre: context.genre, 
-                stakes: context.stakes, 
-                storyCircle: result.storyCircle, 
-                characterProfileIds: context.characterIds 
-            };
-            setStory(newStory);
-            return newStory;
+
+            if (context.seasonId && context.storyArcId) {
+                // Update existing story arc
+                setStory(currentStory => {
+                    if (!currentStory) return null;
+                    
+                    const newSeasons = currentStory.seasons.map(season => {
+                        if (season.id === context.seasonId) {
+                            const newStoryArcs = season.storyArcs.map(arc => {
+                                if (arc.id === context.storyArcId) {
+                                    return { ...arc, storyCircle: result.storyCircle };
+                                }
+                                return arc;
+                            });
+                            return { ...season, storyArcs: newStoryArcs };
+                        }
+                        return season;
+                    });
+
+                    return { ...currentStory, seasons: newSeasons };
+                });
+                return; 
+            } else {
+                // Create new story with first season and arc
+                const newStoryArc: StoryArc = {
+                    id: `arc-${Date.now()}`,
+                    title: stringToRichText('Capítulo 1', 'ai'),
+                    storyCircle: result.storyCircle,
+                };
+                const newSeason: Season = {
+                    id: `season-${Date.now()}`,
+                    seasonNumber: 1,
+                    title: stringToRichText('Temporada 1', 'ai'),
+                    storyArcs: [newStoryArc],
+                };
+                const newStory: Story = {
+                    genre: context.genre,
+                    stakes: context.stakes,
+                    characterProfileIds: context.characterIds,
+                    seasons: [newSeason],
+                };
+                setStory(newStory);
+                return newStory;
+            }
         }
     } catch (error: any) {
         console.error(`Error generating ${elementType}:`, error);
@@ -1152,10 +1290,12 @@ If characters are present, they should be positioned to leave empty space at the
       const storyGenre = stringToRichText(`${richTextToString(newLore.genre)} aventura`, 'ai');
       const storyStakes = stringToRichText('The fate of the galaxy hangs in the balance', 'ai');
       const storyResult = await generateStory(newLore, newProfiles, storyGenre, storyStakes);
+      const newStoryArc: StoryArc = { id: `arc-${Date.now()}`, title: stringToRichText('Capítulo 1', 'ai'), storyCircle: storyResult.storyCircle };
+      const newSeason: Season = { id: `season-${Date.now()}`, seasonNumber: 1, title: stringToRichText('Temporada 1', 'ai'), storyArcs: [newStoryArc] };
       const newStory: Story = {
         genre: storyGenre, stakes: storyStakes,
-        storyCircle: storyResult.storyCircle,
         characterProfileIds: newProfiles.map(p => p.id),
+        seasons: [newSeason]
       };
 
       // 4. Set all state at once
@@ -1427,11 +1567,12 @@ If characters are present, they should be positioned to leave empty space at the
     input.click();
   }, []);
   
-  const handleAppendComicTheme = useCallback((theme: string) => {
+  const handleAppendComicTheme = useCallback((summary: string) => {
     setComicTheme(prev => {
-        const newTheme = `#${theme.replace(/\s+/g, '_')}`;
-        if (prev.trim() === '') return newTheme;
-        return `${prev} ${newTheme}`;
+        const newContent = summary.trim();
+        if (prev.trim() === '') return newContent;
+        // Append summary on a new line for better readability in the textarea
+        return `${prev.trim()}\n\n${newContent}`;
     });
   }, []);
 
@@ -1566,6 +1707,13 @@ If characters are present, they should be positioned to leave empty space at the
     ? (comicAspectRatio === '1:1' ? canvasHeight : comicAspectRatio === '16:9' ? canvasHeight * (16 / 9) : canvasHeight * (9 / 16))
     : 400;
 
+  if (authStatus === 'checking') {
+    return <div className="w-screen h-screen bg-condorito-pink" />;
+  }
+  
+  if (authStatus === 'unauthenticated') {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen bg-condorito-pink font-sans overflow-hidden">
@@ -1584,6 +1732,7 @@ If characters are present, they should be positioned to leave empty space at the
           onNewUniverse={handleNewUniverse}
           onNewProject={handleNewProject}
           onNewBackground={handleNewBackground}
+          onOpenProfile={handleOpenProfile}
         />
       )}
       {apiError && (
@@ -1608,6 +1757,8 @@ If characters are present, they should be positioned to leave empty space at the
         handleImport={handleImport}
         handleExport={handleExport}
         onExportComic={handleExportComic}
+        userProfile={userProfile}
+        onLogout={handleLogout}
       />
       <main className={`flex-grow relative ${fullScreenPanelKey ? 'invisible' : ''}`}>
         {project && project.comicPages.length > 1 && (
@@ -1635,6 +1786,7 @@ If characters are present, they should be positioned to leave empty space at the
             comicLanguage={comicLanguage}
             comicFontFamily={comicFontFamily}
             comicTheme={comicTheme}
+            comicPanelCornerRadius={comicPanelCornerRadius}
             canvasResetToken={canvasResetToken} 
             viewBox={viewBox}
             onViewBoxChange={setViewBox}
@@ -1684,6 +1836,8 @@ If characters are present, they should be positioned to leave empty space at the
           onMinComicFontSizeChange={handleMinComicFontSizeChange}
           maxComicFontSize={maxComicFontSize}
           onMaxComicFontSizeChange={handleMaxComicFontSizeChange}
+          comicPanelCornerRadius={comicPanelCornerRadius}
+          onComicPanelCornerRadiusChange={setComicPanelCornerRadius}
           comicLanguage={comicLanguage}
           onComicLanguageChange={setComicLanguage}
           onGenerateComic={handleGenerateComic}
@@ -1716,6 +1870,7 @@ If characters are present, they should be positioned to leave empty space at the
           characterEditorTab={characterEditorTab}
           onCharacterEditorTabChange={setCharacterEditorTab}
           setApiError={setApiError}
+          // FIX: Changed `onGenerateProject` to `handleGenerateProject` to pass the correct function.
           onGenerateProject={handleGenerateProject}
           narrativeScript={narrativeScript}
           onNarrativeScriptChange={setNarrativeScript}
@@ -1727,6 +1882,8 @@ If characters are present, they should be positioned to leave empty space at the
           onProceduralBackgroundsChange={setProceduralBackgrounds}
           selectedBackgroundId={selectedBackgroundId}
           onSelectedBackgroundIdChange={setSelectedBackgroundId}
+          userProfile={userProfile}
+          onUserProfileChange={handleUserProfileChange}
         />
     </div>
   );

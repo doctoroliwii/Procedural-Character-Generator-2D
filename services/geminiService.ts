@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 // FIX: Added import for Location type.
-import type { Lore, CharacterProfile, Story, Location, RichText, NarrativeScript } from '../types';
+import type { Lore, CharacterProfile, Story, Location, RichText, NarrativeScript, StoryCircleStep } from '../types';
 
 // API key is automatically provided by the environment
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
@@ -162,24 +162,28 @@ Sé creativo y conciso, y responde solo con el tema en sí, sin texto adicional.
   }
 };
 
-export const getTrendsForCountry = async (countryName: string): Promise<string[]> => {
-    const prompt = `Enumera los 10 temas de búsqueda de Google más buscados en ${countryName} en las últimas 24 horas.
-  Responde únicamente con un array JSON de strings.
-  Cada string debe ser una consulta de búsqueda real y popular.
-  Por ejemplo: ["resultados de fútbol", "estreno de película", "noticias de celebridades"].`;
+export const getTrendsForCountry = async (countryName: string): Promise<{ title: string; summary: string; }[]> => {
+  const prompt = `Using Google Search, find the top 5 real, current trending search topics in ${countryName} right now.
+For each topic, provide a concise title and a one-sentence summary in Spanish.
+The topics should be interesting, specific, and suitable for a comic strip theme (e.g., "Chilean national holiday food preparations", "unexpected winter snow in Santiago", not just "news" or "weather").
+Return the answer ONLY as a valid JSON array of objects. Each object must have a "title" and a "summary" key. Do not include any other text, markdown, or explanations.
+
+Example format:
+[
+  {"title": "Ola de frío en el sur", "summary": "Una inesperada ola de frío polar afecta a la Patagonia, dejando postales de nieve en lugares inusuales."},
+  {"title": "Nuevo descubrimiento astronómico", "summary": "Astrónomos chilenos descubren un exoplaneta con características similares a la Tierra desde el observatorio Paranal."}
+]`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-pro",
       contents: prompt,
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING }
-        },
+        tools: [{googleSearch: {}}],
       },
     });
+    // The model with search grounding might return markdown with a JSON block.
+    // parseJsonResponse is designed to handle this.
     return parseJsonResponse(response.text);
   } catch (error) {
     console.error(`Error fetching trends for ${countryName}:`, error);
@@ -404,7 +408,7 @@ export const generateFullCharacterProfile = async (
 };
 
 
-export const generateStory = async (lore: Lore, characters: CharacterProfile[], genre: RichText, stakes: RichText): Promise<Omit<Story, 'characterProfileIds' | 'genre' | 'stakes'>> => {
+export const generateStory = async (lore: Lore, characters: CharacterProfile[], genre: RichText, stakes: RichText): Promise<{ storyCircle: StoryCircleStep[] }> => {
     const characterSummaries = characters.map(c => `PERSONAJE: ${richTextToString(c.name)}. HERIDA (TRAUMA): ${richTextToString(c.backstory.wound)}. MOTIVACIÓN: ${richTextToString(c.psychology.motivation)}.`).join('\n');
     const loreString = JSON.stringify({
         genre: richTextToString(lore.genre),
@@ -429,9 +433,9 @@ export const generateStory = async (lore: Lore, characters: CharacterProfile[], 
     return parseJsonResponse(response.text);
 };
 
-export const generateComicScriptFromStory = async (story: Story, lore: Lore, characters: CharacterProfile[], numPanels: number, language: string, scene: string): Promise<NarrativeScript> => {
+export const generateComicScriptFromStory = async (storyCircle: StoryCircleStep[], lore: Lore, characters: CharacterProfile[], numPanels: number, language: string, scene: string): Promise<NarrativeScript> => {
     const characterMap = new Map(characters.map(c => [c.id, c]));
-    const charactersInStory = story.characterProfileIds.map(id => characterMap.get(id)).filter(Boolean) as CharacterProfile[];
+    const charactersInStory = characters;
     const characterSummaries = charactersInStory.map((c, index) => `ID ${index}: ${richTextToString(c.name)}. PSICOLOGÍA: ${richTextToString(c.psychology.virtues)}, ${richTextToString(c.psychology.flaws)}.`).join('\n');
     const languageMap: Record<string, string> = { es: 'español', en: 'inglés', ja: 'japonés', zh: 'chino', ru: 'ruso', hi: 'hindi' };
     const languageName = languageMap[language] || 'español';
@@ -445,7 +449,7 @@ export const generateComicScriptFromStory = async (story: Story, lore: Lore, cha
     ${characterSummaries}
     
     HISTORIA A ADAPTAR (en 8 pasos):
-    ${story.storyCircle.map(s => `${s.step}. ${s.title}: ${s.description}`).join('\n')}
+    ${storyCircle.map(s => `${s.step}. ${s.title}: ${s.description}`).join('\n')}
     
     TAREA:
     - Adapta la historia a un guion de ${numPanels} viñetas. Distribuye los 8 pasos de la historia de forma lógica.

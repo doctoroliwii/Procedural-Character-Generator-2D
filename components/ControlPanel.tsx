@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 // FIX: Add missing import for BackgroundOptions
-import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions, NarrativeScript, DialogueData, ProceduralBackground } from '../types';
+import type { CharacterParams, CharacterProfile, ComicPanelData, Lore, RichText, Story, BackgroundOptions, NarrativeScript, DialogueData, ProceduralBackground, UserProfile } from '../types';
 import { COMPULSIVO_LOGO_BASE64, DiceIcon } from './icons';
 import Slider from './Slider';
 import ControlModule from './ControlModule';
@@ -11,6 +10,7 @@ import TrendingThemePanel from './TrendingThemePanel';
 import { generateRandomAppearanceParams, getRandomParamValue } from '../services/characterGenerationService';
 import ProjectSettingsPanel from './ProjectSettingsPanel';
 import BackgroundEditor from './BackgroundEditor';
+import UserProfilePanel from './UserProfilePanel';
 
 interface ControlPanelProps {
   panels: Record<PanelKey, PanelState>;
@@ -45,6 +45,8 @@ interface ControlPanelProps {
   onMinComicFontSizeChange: (value: number) => void;
   maxComicFontSize: number;
   onMaxComicFontSizeChange: (value: number) => void;
+  comicPanelCornerRadius: number;
+  onComicPanelCornerRadiusChange: (value: number) => void;
   comicLanguage: string;
   onComicLanguageChange: (value: string) => void;
   onGenerateComic: (mode: 'simple' | 'custom') => void;
@@ -91,9 +93,12 @@ interface ControlPanelProps {
   onProceduralBackgroundsChange: (updater: (prev: ProceduralBackground[]) => ProceduralBackground[]) => void;
   selectedBackgroundId: string | null;
   onSelectedBackgroundIdChange: (id: string | null) => void;
+  // User Profile Props
+  userProfile: UserProfile | null;
+  onUserProfileChange: (profile: UserProfile) => void;
 }
 
-export type PanelKey = 'Options' | 'About' | 'Comic' | 'LoreEditor' | 'CharacterEditor' | 'TrendingTheme' | 'ProjectSettings' | 'BackgroundEditor';
+export type PanelKey = 'Options' | 'About' | 'Comic' | 'LoreEditor' | 'CharacterEditor' | 'TrendingTheme' | 'ProjectSettings' | 'BackgroundEditor' | 'UserProfile';
 
 export interface PanelState {
   isOpen: boolean;
@@ -187,7 +192,7 @@ const CharacterListItem: React.FC<CharacterListItemProps> = ({
 
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { 
-    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, useNanoBananaOnly, onUseNanoBananaOnlyChange, useProceduralBackgrounds, onUseProceduralBackgroundsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
+    panels, fullScreenPanelKey, backgroundOptions, onBackgroundOptionsChange, showBoundingBoxes, onShowBoundingBoxesChange, uiScale, onUiScaleChange, comicFontFamily, onComicFontFamilyChange, comicTheme, onComicThemeChange, comicScene, onComicSceneChange, onRandomizeComicScene, isRandomizingScene, onAppendComicTheme, numComicPanels, onNumComicPanelsChange, numComicPages, onNumComicPagesChange, useNanoBananaOnly, onUseNanoBananaOnlyChange, useProceduralBackgrounds, onUseProceduralBackgroundsChange, comicAspectRatio, onComicAspectRatioChange, minComicFontSize, onMinComicFontSizeChange, maxComicFontSize, onMaxComicFontSizeChange, comicPanelCornerRadius, onComicPanelCornerRadiusChange, comicLanguage, onComicLanguageChange, onGenerateComic, onGenerateAllAndComic, isGeneratingComic, onRandomizeComic, isRandomizingComic, comicPanels, onRandomizeComicCharacters, togglePanel, updatePanelPosition, bringToFront,
     // Narrative props
     lore, onLoreChange, characterProfiles, onCharacterProfilesChange, selectedCharId, onSelectedCharIdChange, onDeleteCharacter, story, onStoryChange, onGenerateNarrativeElement, onGenerateSimpleCharacters, isGeneratingSimpleCharacters, onRegenerateCharacterName, onRandomizeCharacterAppearance, comicMode, onComicModeChange, characterEditorTab, onCharacterEditorTabChange,
     setApiError, onGenerateProject,
@@ -195,6 +200,8 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     narrativeScript, onNarrativeScriptChange, selectedPageIndex, onSelectedPageIndexChange, selectedPanelIndex, onSelectedPanelIndexChange,
     // Background Editor props
     proceduralBackgrounds, onProceduralBackgroundsChange, selectedBackgroundId, onSelectedBackgroundIdChange,
+    // User Profile props
+    userProfile, onUserProfileChange
   } = props;
   
   const [activeComicTab, setActiveComicTab] = React.useState<'main' | 'characters' | 'scene'>('main');
@@ -269,10 +276,19 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
         if (key === 'BackgroundEditor') title = 'Editor de Fondos';
         if (key === 'TrendingTheme') title = 'Trending Theme';
         if (key === 'ProjectSettings') title = 'Project Settings';
+        if (key === 'UserProfile') title = 'User Profile';
 
 
         let content: React.ReactNode = null;
         switch (key) {
+          case 'UserProfile':
+            content = userProfile ? (
+              <UserProfilePanel
+                userProfile={userProfile}
+                onUserProfileChange={onUserProfileChange}
+              />
+            ) : null;
+            break;
           case 'BackgroundEditor':
             content = (
               <BackgroundEditor
@@ -404,6 +420,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                            <div className="pt-4 mt-4 border-t border-panel-header space-y-3">
                              <div> <label htmlFor="language-select" className="block text-xs font-medium text-condorito-brown mb-1 select-none">Language</label> <select id="language-select" value={comicLanguage} onChange={(e) => onComicLanguageChange(e.target.value)} className="w-full p-2 border border-panel-header rounded-md shadow-sm focus:ring-condorito-red focus:border-condorito-red text-xs bg-white"> <option value="es">Español</option> <option value="en">Inglés</option> <option value="ja">Japonés</option> <option value="zh">Chino</option> <option value="ru">Ruso</option> <option value="hi">Hindi</option> </select> </div>
                              <ShapeSelector label="Aspect Ratio" value={comicAspectRatio} options={['1:1', '16:9', '9:16']} onChange={(v) => onComicAspectRatioChange(v as '1:1' | '16:9' | '9:16')} />
+                             <Slider label="Panel Corners" min={0} max={40} step={1} value={comicPanelCornerRadius} onChange={e => onComicPanelCornerRadiusChange(Number(e.target.value))} />
                              <div>
                                <label htmlFor="font-select" className="block text-xs font-medium text-condorito-brown mb-1 select-none">Font Family</label>
                                <select 

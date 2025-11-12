@@ -1,5 +1,3 @@
-
-
 import React, { useMemo } from 'react';
 import type { CharacterInstance, ComicPanelData, ProceduralBackground } from '../types';
 import Character from './Character';
@@ -71,16 +69,17 @@ interface ComicPanelProps {
     instanceKey: string;
     comicLanguage: string;
     comicFontFamily: string;
+    comicPanelCornerRadius: number;
     layer: 'content' | 'dialogue';
 }
 
-const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFontSize, maxComicFontSize, instanceKey, comicLanguage, comicFontFamily, layer }) => {
+const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFontSize, maxComicFontSize, instanceKey, comicLanguage, comicFontFamily, comicPanelCornerRadius, layer }) => {
     const { x, y, width, height } = panelLayout;
     
     const clipId = `clip-${instanceKey}`;
     const outlineColor = '#4A2E2C';
     const outlineWidth = 6;
-    const cornerRadius = 10;
+    const cornerRadius = comicPanelCornerRadius;
     const VIEWBOX_WIDTH_BASE = 400;
     const VIEWBOX_HEIGHT = 700;
 
@@ -126,30 +125,48 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
             // Correctly transform character-space head position to panel-space
             const speakerHeadX = (character.x + bodyXOffset) * (width / VIEWBOX_WIDTH_BASE) + (width / 2);
             const speakerHeadY = (character.y + headYInCharacterCoords - characterCenterYInCharacterCoords) * (height / VIEWBOX_HEIGHT) + (height / 2);
+            
+            const scaledHeadHeight = character.params.headHeight * character.scale * (height / VIEWBOX_HEIGHT);
+            const headTopY = speakerHeadY - scaledHeadHeight / 2;
 
-            let bubbleX, bubbleY;
-            const attempts = 10;
+            let bubbleX = 0, bubbleY = 0;
+            const attempts = 15;
             let foundPosition = false;
 
             for (let i = 0; i < attempts; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const radius = (width + height) / 10;
-                bubbleX = speakerHeadX + Math.cos(angle) * radius - bubbleWidth / 2;
-                bubbleY = speakerHeadY - bubbleHeight - Math.sin(angle) * radius - 20;
+                const angle = (Math.random() * 0.8 + 0.1) * Math.PI; // Top hemisphere, avoiding horizontal
+                const radius = Math.random() * (width / 5) + 20;
+                
+                bubbleX = speakerHeadX - Math.cos(angle) * radius - bubbleWidth / 2;
+                bubbleY = speakerHeadY - Math.sin(angle) * radius - bubbleHeight; // Move up from head center
 
+                // Clamp to panel bounds
                 bubbleX = Math.max(padding, Math.min(width - bubbleWidth - padding, bubbleX));
                 bubbleY = Math.max(padding, Math.min(height - bubbleHeight - padding, bubbleY));
 
                 const currentRect = { x: bubbleX, y: bubbleY, width: bubbleWidth, height: bubbleHeight };
-                if (!occupiedRects.some(rect => checkCollision(rect, currentRect))) {
+
+                // Check for collision with other bubbles AND if it's above the character's head
+                if ((currentRect.y + currentRect.height < headTopY - 10) && !occupiedRects.some(rect => checkCollision(rect, currentRect))) {
                     foundPosition = true;
                     break;
                 }
             }
             
             if (!foundPosition) { // Fallback if no non-colliding spot is found
-                bubbleX = (width - bubbleWidth) / 2;
-                bubbleY = padding;
+                // Place directly above head, then try to shift if needed
+                bubbleY = Math.max(padding, headTopY - bubbleHeight - 15);
+                bubbleX = speakerHeadX - bubbleWidth / 2;
+                bubbleX = Math.max(padding, Math.min(width - bubbleWidth - padding, bubbleX));
+
+                let currentRect = { x: bubbleX, y: bubbleY, width: bubbleWidth, height: bubbleHeight };
+                let tries = 0;
+                while(occupiedRects.some(rect => checkCollision(rect, currentRect)) && tries < 5){
+                     bubbleX += (tries % 2 === 0 ? 1 : -1) * (bubbleWidth / 4);
+                     bubbleX = Math.max(padding, Math.min(width - bubbleWidth - padding, bubbleX));
+                     currentRect.x = bubbleX;
+                     tries++;
+                }
             }
 
             const currentRect = { x: bubbleX, y: bubbleY, width: bubbleWidth, height: bubbleHeight };
@@ -161,7 +178,7 @@ const ComicPanel: React.FC<ComicPanelProps> = ({ panel, panelLayout, minComicFon
             bubbles.push(
                 <g key={`dialogue-${index}`}>
                     <path d={pathData} fill="white" stroke={outlineColor} strokeWidth={outlineWidth / 2} />
-                    <text x={bubbleX + padding} y={bubbleY + padding + fontSize} fontFamily={comicFontFamily} fontSize={fontSize} fill={outlineColor} fontWeight="bold" style={{ whiteSpace: 'pre' }}>
+                    <text x={bubbleX + padding} y={bubbleY + padding + fontSize} fontFamily={comicFontFamily} fontSize={fontSize} fill={outlineColor} fontWeight="bold" style={{ whiteSpace: 'pre', userSelect: 'none' }}>
                         {lines.map((line, lineIndex) => (
                             <tspan key={lineIndex} x={bubbleX + padding} dy={lineIndex > 0 ? lineSpacing : 0}>{line}</tspan>
                         ))}

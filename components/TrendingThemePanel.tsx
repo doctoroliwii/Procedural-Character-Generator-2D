@@ -9,8 +9,8 @@ interface TrendingThemePanelProps {
 }
 
 const TrendingThemePanel: React.FC<TrendingThemePanelProps> = ({ onAppendTheme, setApiError }) => {
-  const [selectedCountry, setSelectedCountry] = useState('GLOBAL');
-  const [trends, setTrends] = useState<string[]>([]);
+  const [selectedCountry, setSelectedCountry] = useState('CL');
+  const [trends, setTrends] = useState<{ title: string; summary: string; }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -66,10 +66,10 @@ const TrendingThemePanel: React.FC<TrendingThemePanelProps> = ({ onAppendTheme, 
         {trends.map((trend, index) => (
           <button
             key={index}
-            onClick={() => onAppendTheme(trend)}
+            onClick={() => onAppendTheme(trend.summary)}
             className="w-full text-left p-2 bg-panel-header rounded-lg hover:bg-panel-border transition text-xs font-semibold"
           >
-            {trend}
+            {trend.title}
           </button>
         ))}
       </div>

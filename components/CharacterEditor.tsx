@@ -37,11 +37,9 @@ interface RichTextEditorProps {
 }
 
 const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({ label, value, onChange, onBlur, rows = 3, onGenerate, isGenerating, isSingleLine = false }) => {
-    // Convert RichText to a simple string for the textarea.
     const stringValue = richTextToString(value);
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-        // When the user types, we create a new RichText object with the source 'user'.
         onChange([{ text: e.target.value, source: 'user' }]);
     };
 
@@ -49,32 +47,32 @@ const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({ label, value
         value: stringValue,
         onChange: handleChange,
         onBlur: onBlur,
-        // FIX: Changed spellCheck to a boolean to match the expected 'Booleanish' type.
         spellCheck: false,
         className: "w-full p-2 border border-panel-header rounded-md text-xs bg-white focus:ring-1 focus:ring-condorito-red transition",
-        style: { paddingRight: onGenerate ? '2.5rem' : '0.5rem' }
     };
 
     return (
         <div>
             <label className="select-none block text-xs font-semibold text-condorito-brown mb-1">{label}</label>
-            <div className="relative">
-                {isSingleLine ? (
-                    <input type="text" {...commonProps} className={`${commonProps.className} resize-none`} />
-                ) : (
-                    <textarea rows={rows} {...commonProps} className={`${commonProps.className} resize-y`} />
-                )}
+            <div className="flex items-start gap-2">
                 {onGenerate && (
                     <button
                         onClick={onGenerate}
                         disabled={isGenerating}
-                        className="absolute top-1.5 right-1.5 p-1 bg-condorito-red/10 text-condorito-red rounded-full hover:bg-condorito-red/20 disabled:bg-panel-header disabled:text-panel-border disabled:cursor-wait transition-colors"
+                        className="mt-1.5 p-1.5 bg-condorito-red/10 text-condorito-red rounded-full hover:bg-condorito-red/20 disabled:bg-panel-header disabled:text-panel-border disabled:cursor-wait transition-colors"
                         aria-label={`Generate ${label}`}
                         title={`Generate ${label}`}
                     >
                         <DiceIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
                     </button>
                 )}
+                <div className="relative flex-grow">
+                    {isSingleLine ? (
+                        <input type="text" {...commonProps} className={`${commonProps.className} resize-none`} />
+                    ) : (
+                        <textarea rows={rows} {...commonProps} className={`${commonProps.className} resize-y`} />
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -436,6 +434,7 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
     const currentParams = selectedChar?.characterParams;
     const maxMouthBend = currentParams ? 380 - 4 * currentParams.mouthWidthRatio : 100;
     const maxFringeHeightRatio = (() => { if (!currentParams) return 100; const { headHeight, eyeSizeRatio } = currentParams; const margin = 5; const headTopY = 120 - headHeight / 2; const eyeTopY = 120 - (headHeight * (eyeSizeRatio / 100)); const maxFringeHeightPx = eyeTopY - headTopY - margin; const maxRatio = Math.max(0, (maxFringeHeightPx / headHeight) * 100); return isNaN(maxRatio) ? 100 : maxRatio; })();
+    const showEyelidControls = currentParams && ['realistic', 'blocky', 'circle'].includes(currentParams.eyeStyle);
 
 
     return (
@@ -543,8 +542,41 @@ const CharacterEditor: React.FC<CharacterEditorProps> = ({ lore, characterProfil
                                     {showAppearancePresets && ( <div className="p-3 bg-panel-back rounded-lg border border-panel-header space-y-2"> <h4 className="font-semibold text-xs text-condorito-brown">Apariencias Guardadas</h4> {appearancePresets.length === 0 ? ( <p className="text-xs text-center text-condorito-brown py-2">No hay apariencias guardadas.</p> ) : ( <div className="max-h-32 overflow-y-auto space-y-1 pr-1"> {appearancePresets.map(preset => ( <div key={preset.name} className="flex items-center justify-between p-1.5 rounded-lg bg-panel-header group"> <button onClick={() => handleLoadAppearancePreset(preset.params)} className="text-left text-xs text-condorito-brown flex-grow hover:text-condorito-red">{preset.name}</button> <button onClick={() => handleDeleteAppearancePreset(preset.name)} className="text-condorito-red opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-condorito-red/20" title={`Eliminar ${preset.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg> </button> </div> ))} </div> )} </div> )}
                                     <div className="space-y-3 p-3 bg-panel-back rounded-b-lg">
                                       {activeAppearanceSubTab === 'head' && <div className="space-y-4"> {(['headWidth', 'headHeight', 'mouthWidthRatio', 'mouthYOffsetRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <Slider {...PARAM_CONFIGS.mouthBend} min={-Math.round(maxMouthBend)} max={Math.round(maxMouthBend)} value={currentParams.mouthBend} onChange={(e) => handleParamChange('mouthBend', Number(e.target.value))} onRandomize={() => handleRandomizeParam('mouthBend')} /> <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Head Shape" value={currentParams.headShape} options={['ellipse', 'circle', 'square', 'triangle', 'inverted-triangle']} onChange={(v) => handleParamChange('headShape', v)} onRandomize={() => handleRandomizeParam('headShape')} /> {(currentParams.headShape === 'square') && ( <Slider {...PARAM_CONFIGS.headCornerRadius} value={currentParams.headCornerRadius} onChange={(e) => handleParamChange('headCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('headCornerRadius')} /> )} {(currentParams.headShape === 'triangle' || currentParams.headShape === 'inverted-triangle') && ( <Slider {...PARAM_CONFIGS.triangleCornerRadius} value={currentParams.triangleCornerRadius} onChange={(e) => handleParamChange('triangleCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('triangleCornerRadius')} /> )} </div> </div>}
-                                      {activeAppearanceSubTab === 'hair' && <div className="space-y-4"> <CheckboxControl label="Enable Hair" checked={currentParams.hair} onChange={e => handleParamChange('hair', e.target.checked)} onRandomize={() => handleRandomizeParam('hair')} /> {currentParams.hair && ( <div className="pt-4 border-t border-panel-header space-y-4"> {(['backHairWidthRatio', 'backHairHeightRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <Slider {...PARAM_CONFIGS.fringeHeightRatio} max={Math.floor(maxFringeHeightRatio)} value={currentParams.fringeHeightRatio} onChange={(e) => handleParamChange('fringeHeightRatio', Number(e.target.value))} onRandomize={() => handleRandomizeParam('fringeHeightRatio')} /> </div> )} </div>}
-                                      {activeAppearanceSubTab === 'eyes' && <div className="space-y-4"> {(['eyeSizeRatio', 'eyeSpacingRatio', 'pupilSizeRatio', 'upperEyelidCoverage', 'lowerEyelidCoverage', 'eyebrowWidthRatio', 'eyebrowHeightRatio', 'eyebrowYOffsetRatio', 'eyebrowAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <div className="pt-4 border-t border-panel-header space-y-3"> <CheckboxControl label="Eyelashes" checked={currentParams.eyelashes} onChange={e => handleParamChange('eyelashes', e.target.checked)} onRandomize={() => handleRandomizeParam('eyelashes')} /> {currentParams.eyelashes && ( <div className="pl-2 border-l-2 border-condorito-red/30 space-y-4"> {(['eyelashCount', 'eyelashLength', 'eyelashAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> )} </div> </div>}
+                                      {activeAppearanceSubTab === 'hair' && <div className="space-y-4"> <CheckboxControl label="Enable Hair" checked={currentParams.hair} onChange={e => handleParamChange('hair', e.target.checked)} onRandomize={() => handleRandomizeParam('hair')} /> {currentParams.hair && ( <div className="pt-4 border-t border-panel-header space-y-4"> <ShapeSelector label="Back Hair Shape" value={currentParams.backHairShape} options={['smooth', 'afro', 'square', 'triangle', 'oval']} onChange={(v) => handleParamChange('backHairShape', v)} onRandomize={() => handleRandomizeParam('backHairShape')} /> {(['backHairWidthRatio', 'backHairHeightRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <Slider {...PARAM_CONFIGS.fringeHeightRatio} max={Math.floor(maxFringeHeightRatio)} value={currentParams.fringeHeightRatio} onChange={(e) => handleParamChange('fringeHeightRatio', Number(e.target.value))} onRandomize={() => handleRandomizeParam('fringeHeightRatio')} /> <div className="pt-4 border-t border-panel-header space-y-4"> {(['hairCurliness', 'hairCurlFrequency', 'hairCurlAmplitude'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> </div> )} </div>}
+                                      {activeAppearanceSubTab === 'eyes' && <div className="space-y-4">
+                                        <ShapeSelector label="Eye Style" value={currentParams.eyeStyle} options={['realistic', 'blocky', 'circle', 'dot', 'square', 'triangle']} onChange={(v) => handleParamChange('eyeStyle', v)} onRandomize={() => handleRandomizeParam('eyeStyle')} />
+                                        <div className="pt-4 border-t border-panel-header space-y-4">
+                                            {(['eyeSizeRatio', 'eyeSpacingRatio', 'pupilSizeRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)}
+                                            {showEyelidControls && (<>
+                                                <Slider {...PARAM_CONFIGS['upperEyelidCoverage']} value={currentParams['upperEyelidCoverage']} onChange={(e) => handleParamChange('upperEyelidCoverage', Number(e.target.value))} onRandomize={() => handleRandomizeParam('upperEyelidCoverage')} />
+                                                <Slider {...PARAM_CONFIGS['lowerEyelidCoverage']} value={currentParams['lowerEyelidCoverage']} onChange={(e) => handleParamChange('lowerEyelidCoverage', Number(e.target.value))} onRandomize={() => handleRandomizeParam('lowerEyelidCoverage')} />
+                                            </>)}
+                                        </div>
+                                        <div className="pt-4 border-t border-panel-header space-y-3">
+                                            <CheckboxControl label="Glint" checked={currentParams.glint} onChange={e => handleParamChange('glint', e.target.checked)} onRandomize={() => handleRandomizeParam('glint')} />
+                                            {currentParams.glint && (
+                                                <div className="pl-2 border-l-2 border-condorito-red/30 space-y-4">
+                                                    {(['glintSizeRatio', 'glintXOffsetRatio', 'glintYOffsetRatio', 'glintOpacity'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="pt-4 border-t border-panel-header space-y-3">
+                                            <CheckboxControl label="Eyebrows" checked={currentParams.eyebrows} onChange={e => handleParamChange('eyebrows', e.target.checked)} onRandomize={() => handleRandomizeParam('eyebrows')} />
+                                            {currentParams.eyebrows && (
+                                                <div className="pl-2 border-l-2 border-condorito-red/30 space-y-4">
+                                                    {(['eyebrowWidthRatio', 'eyebrowHeightRatio', 'eyebrowYOffsetRatio', 'eyebrowAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="pt-4 border-t border-panel-header space-y-3">
+                                            <CheckboxControl label="Eyelashes" checked={currentParams.eyelashes} onChange={e => handleParamChange('eyelashes', e.target.checked)} onRandomize={() => handleRandomizeParam('eyelashes')} />
+                                            {currentParams.eyelashes && (
+                                                <div className="pl-2 border-l-2 border-condorito-red/30 space-y-4">
+                                                    {(['eyelashCount', 'eyelashLength', 'eyelashAngle'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)}
+                                                </div>
+                                            )}
+                                        </div>
+                                      </div>}
                                       {activeAppearanceSubTab === 'body' && <div className="space-y-4"> {(['neckHeight', 'neckWidthRatio', 'torsoHeight', 'torsoWidth', 'pelvisHeight', 'pelvisWidthRatio'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k]} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Torso Shape" value={currentParams.torsoShape} options={['rectangle', 'circle', 'square', 'triangle', 'inverted-triangle']} onChange={(v) => handleParamChange('torsoShape', v)} onRandomize={() => handleRandomizeParam('torsoShape')} /> {(currentParams.torsoShape === 'square' || currentParams.torsoShape === 'rectangle') && ( <Slider {...PARAM_CONFIGS.torsoCornerRadius} value={currentParams.torsoCornerRadius} onChange={(e) => handleParamChange('torsoCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('torsoCornerRadius')} /> )} {(currentParams.torsoShape === 'triangle' || currentParams.torsoShape === 'inverted-triangle') && ( <Slider {...PARAM_CONFIGS.triangleCornerRadius} value={currentParams.triangleCornerRadius} onChange={(e) => handleParamChange('triangleCornerRadius', Number(e.target.value))} onRandomize={() => handleRandomizeParam('triangleCornerRadius')} /> )} </div> <div className="pt-4 border-t border-panel-header space-y-3"> <ShapeSelector label="Pelvis Shape" value={currentParams.pelvisShape} options={['rectangle', 'horizontal-oval']} onChange={(v) => handleParamChange('pelvisShape', v)} onRandomize={() => handleRandomizeParam('pelvisShape')} /> </div> </div>}
                                       {activeAppearanceSubTab === 'arms' && <div className="space-y-4"> <Slider {...PARAM_CONFIGS['armLength']} value={currentParams['armLength']} onChange={(e) => handleParamChange('armLength', Number(e.target.value))} onRandomize={() => handleRandomizeParam('armLength')} /> <div className="pt-4 border-t border-panel-header space-y-3"> <div className="flex items-center justify-between p-2 rounded-lg bg-panel-header"> <label htmlFor="limbSymmetry" className="font-medium text-condorito-brown select-none text-xs">Symmetry</label> <input type="checkbox" id="limbSymmetry" checked={limbSymmetry} onChange={e => setLimbSymmetry(e.target.checked)} className="h-5 w-5 rounded-md border-panel-header text-condorito-red focus:ring-condorito-red cursor-pointer" /> </div> </div> <div className="pt-4 border-t border-panel-header space-y-4"> {(['lArmWidth', 'rArmWidth', 'lHandSize', 'rHandSize', 'lArmAngle', 'lArmBend', 'rArmAngle', 'rArmBend'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k] as number} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> </div>}
                                       {activeAppearanceSubTab === 'legs' && <div className="space-y-4"> <Slider {...PARAM_CONFIGS['legLength']} value={currentParams['legLength']} onChange={(e) => handleParamChange('legLength', Number(e.target.value))} onRandomize={() => handleRandomizeParam('legLength')} /> <div className="pt-4 border-t border-panel-header space-y-4"> {(['lLegWidth', 'rLegWidth', 'lFootSize', 'rFootSize', 'lLegAngle', 'lLegBend', 'rLegAngle', 'rLegBend'] as const).map(k => <Slider key={k} {...PARAM_CONFIGS[k]} value={currentParams[k] as number} onChange={(e) => handleParamChange(k, Number(e.target.value))} onRandomize={() => handleRandomizeParam(k)} />)} </div> </div>}

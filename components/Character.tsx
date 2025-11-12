@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { CharacterInstance, CharacterParams } from '../types';
 import { PARAM_CONFIGS } from '../constants';
+import { getEyePathData } from './eyeFormulas';
 
 // Helper to create a rounded polygon path
 function createRoundedPolygonPath(points: {x: number, y: number}[], radius: number): string {
@@ -63,7 +64,7 @@ const Character: React.FC<{
         const {
             headWidth, headHeight, headShape, headCornerRadius, triangleCornerRadius, eyeSizeRatio, eyeSpacingRatio, pupilSizeRatio, upperEyelidCoverage,
             // FIX: Corrected typo from lowerEylidCoverage to lowerEyelidCoverage to match type definition.
-            lowerEyelidCoverage, eyeStyle, eyeTracking, eyelashes, eyelashCount, eyelashLength, eyelashAngle, mouthWidthRatio, mouthYOffsetRatio, mouthBend, eyebrowWidthRatio, eyebrowHeightRatio, eyebrowYOffsetRatio, eyebrowAngle, neckHeight, neckWidthRatio, torsoHeight, torsoWidth, torsoShape, torsoCornerRadius, pelvisHeight, pelvisWidthRatio, pelvisShape, armLength, lArmWidth, rArmWidth, lHandSize, rHandSize, legLength, lLegWidth, rLegWidth, lFootSize, rFootSize, lArmAngle, rArmAngle, lArmBend, rArmBend, lLegAngle, rLegAngle, lLegBend, rLegBend, hair, backHairWidthRatio, backHairHeightRatio, fringeHeightRatio, viewAngle, bodyColor, irisColor, outlineColor, pupilColor, hairColor, bodyOutlines, eyeOutlines
+            lowerEyelidCoverage, eyeStyle, eyeTracking, eyelashes, eyelashCount, eyelashLength, eyelashAngle, glint, glintSizeRatio, glintXOffsetRatio, glintYOffsetRatio, glintOpacity, mouthWidthRatio, mouthYOffsetRatio, mouthBend, eyebrows, eyebrowWidthRatio, eyebrowHeightRatio, eyebrowYOffsetRatio, eyebrowAngle, neckHeight, neckWidthRatio, torsoHeight, torsoWidth, torsoShape, torsoCornerRadius, pelvisHeight, pelvisWidthRatio, pelvisShape, armLength, lArmWidth, rArmWidth, lHandSize, rHandSize, legLength, lLegWidth, rLegWidth, lFootSize, rFootSize, lArmAngle, rArmAngle, lArmBend, rArmBend, lLegAngle, rLegAngle, lLegBend, rLegBend, hair, backHairWidthRatio, backHairHeightRatio, fringeHeightRatio, viewAngle, bodyColor, irisColor, outlineColor, pupilColor, hairColor, bodyOutlines, eyeOutlines
         } = params;
 
         // --- 2.5D View Calculations ---
@@ -283,8 +284,10 @@ const Character: React.FC<{
             eyebrowY = Math.max(eyebrowY, fringeBottomY + calculatedEyebrowHeight / 2 + 3);
         }
         
-        features.push({ kind: 'eyebrow', id: 'leftBrow', x: leftEye.cx, y: eyebrowY, angle: eyebrowAngle, scale: leftProj.scale, z: leftProj.zDepth + 0.01 });
-        features.push({ kind: 'eyebrow', id: 'rightBrow', x: rightEye.cx, y: eyebrowY, angle: -eyebrowAngle, scale: rightProj.scale, z: rightProj.zDepth + 0.01 });
+        if (eyebrows) {
+            features.push({ kind: 'eyebrow', id: 'leftBrow', x: leftEye.cx, y: eyebrowY, angle: eyebrowAngle, scale: leftProj.scale, z: leftProj.zDepth + 0.01 });
+            features.push({ kind: 'eyebrow', id: 'rightBrow', x: rightEye.cx, y: eyebrowY, angle: -eyebrowAngle, scale: rightProj.scale, z: rightProj.zDepth + 0.01 });
+        }
         
         if (eyelashes) {
             features.push({ kind: 'eyelashes', id: 'leftEyelashes', eye: leftEye, z: leftEye.z + 0.02 });
@@ -318,55 +321,17 @@ const Character: React.FC<{
         features.sort((a, b) => a.z - b.z);
 
         const getEyeClipPathData = (eyeX: number, eyeRx: number, eyeRy: number) => {
-          if (eyeStyle === 'realistic') { const leftPointX = eyeX - eyeRx; const rightPointX = eyeX + eyeRx; const verticalCenterY = eyeYPos; const upperControlY = (eyeYPos - eyeRy) + (2 * eyeRy * upperEyelidCoverage) / 100; const lowerControlY = (eyeYPos + eyeRy) - (2 * eyeRy * lowerEyelidCoverage) / 100; if (upperControlY >= lowerControlY) { const midY = (upperControlY + lowerControlY) / 2; return `M ${leftPointX},${midY} L ${rightPointX},${midY} Z`; } return `M ${leftPointX},${verticalCenterY} Q ${eyeX},${upperControlY} ${rightPointX},${verticalCenterY} Q ${eyeX},${lowerControlY} ${leftPointX},${verticalCenterY} Z`; 
-          } else { // Blocky style
-            const eyeTopY = eyeYPos - eyeRy;
-            const eyeBottomY = eyeYPos + eyeRy;
-
-            // Helper to find the x-coordinates on the ellipse for a given y
-            const getXforY = (y: number) => {
-                const y_clamped = Math.max(eyeTopY, Math.min(eyeBottomY, y));
-                const y_term = (y_clamped - eyeYPos) / eyeRy;
-                const x_offset_sq = Math.max(0, 1 - y_term * y_term);
-                const x_offset = eyeRx * Math.sqrt(x_offset_sq);
-                return { x1: eyeX - x_offset, x2: eyeX + x_offset };
-            };
-            
-            // With max set to 50, coverage of 50 should close lid to the center.
-            const upperLidY = eyeTopY + (eyeRy * (upperEyelidCoverage / 50));
-            const lowerLidY = eyeBottomY - (eyeRy * (lowerEyelidCoverage / 50));
-
-            if (upperLidY >= lowerLidY) {
-                const midY = (upperLidY + lowerLidY) / 2;
-                const { x1, x2 } = getXforY(midY);
-                return `M ${x1},${midY} L ${x2},${midY} Z`;
-            }
-
-            const hasUpperLid = upperEyelidCoverage > 0.1;
-            const hasLowerLid = lowerEyelidCoverage > 0.1;
-            const upperPoints = getXforY(upperLidY);
-            const lowerPoints = getXforY(lowerLidY);
-
-            let path = `M ${upperPoints.x1} ${upperLidY}`;
-            
-            if (hasUpperLid) {
-                path += ` L ${upperPoints.x2} ${upperLidY}`;
-            } else {
-                path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${upperPoints.x2} ${upperLidY}`;
-            }
-
-            path += ` A ${eyeRx} ${eyeRy} 0 0 0 ${lowerPoints.x2} ${lowerLidY}`; // Right side arc, sweep-flag 0
-            
-            if (hasLowerLid) {
-                path += ` L ${lowerPoints.x1} ${lowerLidY}`;
-            } else {
-                path += ` A ${eyeRx} ${eyeRy} 0 0 1 ${lowerPoints.x1} ${lowerLidY}`;
-            }
-
-            path += ` A ${eyeRx} ${eyeRy} 0 0 0 ${upperPoints.x1} ${upperLidY} Z`; // Left side arc, sweep-flag 0
-            
-            return path;
-        }
+            // La lógica compleja ahora vive en `eyeFormulas.ts`.
+            // Esto simplifica el componente y documenta la solución como se solicitó.
+            return getEyePathData({
+                style: eyeStyle,
+                cx: eyeX,
+                cy: eyeYPos,
+                rx: eyeRx,
+                ry: eyeRy,
+                upperLidCoverage: upperEyelidCoverage,
+                lowerLidCoverage: lowerEyelidCoverage,
+            });
         };
         const renderHead = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; const hW = headWidth / 2; const hH = headHeight / 2; switch (headShape) { case 'circle': return <ellipse cx={dynamicCenterX} cy={headY} rx={hW} ry={hW} {...props} />; case 'square': return <rect x={dynamicCenterX - hW} y={headY - hW} width={headWidth} height={headWidth} rx={headCornerRadius} {...props} />; case 'triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX, y: headY-hH}, {x: dynamicCenterX - hW, y: headY+hH}, {x: dynamicCenterX + hW, y: headY+hH}], triangleCornerRadius)} {...props} />; case 'inverted-triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX - hW, y: headY-hH}, {x: dynamicCenterX + hW, y: headY-hH}, {x: dynamicCenterX, y: headY+hH}], triangleCornerRadius)} {...props} />; default: return <ellipse cx={dynamicCenterX} cy={headY} rx={hW} ry={hH} {...props} />; } };
         const renderTorso = () => { const props = { fill: bodyColor, strokeLinejoin: 'round' as const }; const tW = torsoWidth / 2; const tH = torsoHeight / 2; const torsoCY = torsoTopY + tH; switch (torsoShape) { case 'circle': return <ellipse cx={dynamicCenterX} cy={torsoCY} rx={tW} ry={tH} {...props} />; case 'square': return <rect x={dynamicCenterX - tW} y={torsoTopY} width={torsoWidth} height={torsoWidth} rx={torsoCornerRadius} {...props} />; case 'triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX, y: torsoTopY}, {x: dynamicCenterX-tW, y: torsoTopY+torsoHeight}, {x: dynamicCenterX+tW, y: torsoTopY+torsoHeight}], triangleCornerRadius)} {...props} />; case 'inverted-triangle': return <path d={createRoundedPolygonPath([{x: dynamicCenterX-tW, y: torsoTopY}, {x: dynamicCenterX+tW, y: torsoTopY}, {x: dynamicCenterX, y: torsoTopY+torsoHeight}], triangleCornerRadius)} {...props} />; default: return <rect x={dynamicCenterX - tW} y={torsoTopY} width={torsoWidth} height={torsoHeight} rx={torsoCornerRadius} {...props} />; } };
@@ -386,8 +351,6 @@ const Character: React.FC<{
             <g transform={`translate(${charInstance.x}, ${charInstance.y}) scale(${scaleX}, ${scaleY})`}>
                 <g transform={`translate(${-VIEWBOX_WIDTH_BASE/2}, ${-VIEWBOX_HEIGHT/2})`}>
                     <defs>
-                      <clipPath id={`eyeClip-${leftEye.id}-${instanceKey}`}><path d={getEyeClipPathData(leftEye.cx, leftEye.rx, leftEye.ry)} /></clipPath>
-                      <clipPath id={`eyeClip-${rightEye.id}-${instanceKey}`}><path d={getEyeClipPathData(rightEye.cx, rightEye.rx, rightEye.ry)} /></clipPath>
                       <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
                           <feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius="2" />
                           <feFlood floodColor={outlineColor} result="colored" />
@@ -449,29 +412,98 @@ const Character: React.FC<{
                         switch (f.kind) {
                             case 'eye': {
                                 const { id, cx, cy, rx, ry } = f;
-                                const irisRx = rx * 0.7; const irisRy = ry * 0.7;
-                                const pupilRy = calculatedPupilSize * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale);
-                                const pupilRx = pupilRy * (rx / ry);
-                                const pupilOffset = getPupilOffset(cx, cy, irisRx, irisRy, pupilRx, pupilRy);
-                                const eyelidCompensationY = (ry * (upperEyelidCoverage / 100)) * 0.4;
-                                const glintRadius = calculatedEyeSize * 0.2 * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale);
-                                const glintOffsetX = calculatedEyeSize * 0.85 * 0.3 * (isFlipped ? -1 : 1);
-                                const glintOffsetY = calculatedEyeSize * 0.3;
 
-                                return (
-                                    <g key={id}>
-                                        <g clipPath={`url(#eyeClip-${id}-${instanceKey})`}>
-                                            <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="white" />
-                                            <ellipse cx={cx + pupilOffset.x} cy={cy + pupilOffset.y - eyelidCompensationY} rx={irisRx} ry={irisRy} fill={irisColor} />
-                                            <ellipse cx={cx + pupilOffset.x} cy={cy + pupilOffset.y - eyelidCompensationY} rx={pupilRx} ry={pupilRy} fill={pupilColor} />
-                                            <circle cx={cx + glintOffsetX * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale) + pupilOffset.x * 0.5} cy={cy - glintOffsetY * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale) + pupilOffset.y * 0.5 - eyelidCompensationY} r={glintRadius} fill="white" />
-                                        </g>
-                                        {eyeOutlines && <path d={getEyeClipPathData(cx, rx, ry)} fill="none" stroke={outlineColor} strokeWidth={4 / 2} strokeLinejoin="round" />}
-                                    </g>
-                                );
+                                switch (eyeStyle) {
+                                    case 'dot': {
+                                        const dotRadius = ry * (pupilSizeRatio / 100) * 0.5;
+                                        return <circle key={id} cx={cx} cy={cy} r={dotRadius} fill={pupilColor} />;
+                                    }
+                                    case 'square': {
+                                        const irisRadius = ry * 0.6;
+                                        const pupilRadius = ry * 0.3;
+                                        const pupilOffset = getPupilOffset(cx, cy, irisRadius - pupilRadius, irisRadius - pupilRadius, 0, 0);
+                                        const glintRadius = calculatedEyeSize * (glintSizeRatio / 100);
+                                        const glintOffsetX = (irisRadius * (glintXOffsetRatio / 100));
+                                        const glintOffsetY = (irisRadius * (glintYOffsetRatio / 100));
+                                        
+                                        return (
+                                            <g key={id}>
+                                                <rect x={cx - rx} y={cy - ry} width={rx * 2} height={ry * 2} fill="white" stroke={eyeOutlines ? outlineColor : 'none'} strokeWidth={2}/>
+                                                <circle cx={cx + pupilOffset.x} cy={cy + pupilOffset.y} r={irisRadius} fill={irisColor} />
+                                                <circle cx={cx + pupilOffset.x} cy={cy + pupilOffset.y} r={pupilRadius} fill={pupilColor} />
+                                                {glint && <circle cx={cx + pupilOffset.x * 0.5 + glintOffsetX} cy={cy + pupilOffset.y * 0.5 + glintOffsetY} r={glintRadius} fill="white" fillOpacity={glintOpacity / 100} />}
+                                            </g>
+                                        );
+                                    }
+                                    case 'triangle': {
+                                        const path = `M ${cx} ${cy - ry} L ${cx - rx} ${cy + ry} L ${cx + rx} ${cy + ry} Z`;
+                                        const clipId = `eyeClip-${id}-${instanceKey}`;
+
+                                        const pupilYOffset = ry * 0.3;
+                                        const irisRadius = ry * 0.5;
+                                        const pupilRadius = ry * 0.25;
+                                        const pupilOffset = getPupilOffset(cx, cy + pupilYOffset, irisRadius - pupilRadius, irisRadius - pupilRadius, 0, 0);
+                                        
+                                        const glintRadius = calculatedEyeSize * (glintSizeRatio / 100) * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale);
+                                        const glintOffsetX = (irisRadius * (glintXOffsetRatio / 100));
+                                        const glintOffsetY = (irisRadius * (glintYOffsetRatio / 100));
+
+                                        return (
+                                            <g key={id}>
+                                                <defs>
+                                                    <clipPath id={clipId}>
+                                                        <path d={path} />
+                                                    </clipPath>
+                                                </defs>
+                                                <path d={path} fill="white" stroke={eyeOutlines ? outlineColor : 'none'} strokeWidth={2} strokeLinejoin="round" />
+                                                <g clipPath={`url(#${clipId})`}>
+                                                    <ellipse cx={cx + pupilOffset.x} cy={cy + pupilYOffset + pupilOffset.y} rx={irisRadius} ry={irisRadius} fill={irisColor} />
+                                                    <ellipse cx={cx + pupilOffset.x} cy={cy + pupilYOffset + pupilOffset.y} rx={pupilRadius} ry={pupilRadius} fill={pupilColor} />
+                                                    {glint && <circle 
+                                                        cx={cx + pupilOffset.x * 0.5 + glintOffsetX} 
+                                                        cy={cy + pupilYOffset + pupilOffset.y * 0.5 + glintOffsetY} 
+                                                        r={glintRadius} 
+                                                        fill="white"
+                                                        fillOpacity={glintOpacity / 100}
+                                                    />}
+                                                </g>
+                                            </g>
+                                        );
+                                    }
+                                    case 'circle':
+                                    case 'realistic':
+                                    case 'blocky':
+                                    default: {
+                                        const clipRx = eyeStyle === 'circle' ? ry : rx;
+                                        const irisRx = clipRx * 0.7; const irisRy = ry * 0.7;
+                                        const pupilRy = calculatedPupilSize * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale);
+                                        const pupilRx = pupilRy * (clipRx / ry);
+                                        const pupilOffset = getPupilOffset(cx, cy, irisRx, irisRy, pupilRx, pupilRy);
+                                        const eyelidCompensationY = (ry * (upperEyelidCoverage / 100)) * 0.4;
+                                        
+                                        const glintRadius = calculatedEyeSize * (glintSizeRatio / 100) * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale);
+                                        const glintOffsetX = (irisRx * (glintXOffsetRatio / 100)) * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale);
+                                        const glintOffsetY = (irisRy * (glintYOffsetRatio / 100)) * (f.id === 'leftEye' ? leftProj.scale : rightProj.scale);
+
+                                        return (
+                                            <g key={id}>
+                                                <defs>
+                                                  <clipPath id={`eyeClip-${id}-${instanceKey}`}><path d={getEyeClipPathData(cx, clipRx, ry)} /></clipPath>
+                                                </defs>
+                                                <g clipPath={`url(#eyeClip-${id}-${instanceKey})`}>
+                                                    <ellipse cx={cx} cy={cy} rx={clipRx} ry={ry} fill="white" />
+                                                    <ellipse cx={cx + pupilOffset.x} cy={cy + pupilOffset.y - eyelidCompensationY} rx={irisRx} ry={irisRy} fill={irisColor} />
+                                                    <ellipse cx={cx + pupilOffset.x} cy={cy + pupilOffset.y - eyelidCompensationY} rx={pupilRx} ry={pupilRy} fill={pupilColor} />
+                                                    {glint && <circle cx={cx + glintOffsetX + pupilOffset.x * 0.5} cy={cy + glintOffsetY + pupilOffset.y * 0.5 - eyelidCompensationY} r={glintRadius} fill="white" fillOpacity={glintOpacity/100} />}
+                                                </g>
+                                                {eyeOutlines && <path d={getEyeClipPathData(cx, clipRx, ry)} fill="none" stroke={outlineColor} strokeWidth={4 / 2} strokeLinejoin="round" />}
+                                            </g>
+                                        );
+                                    }
+                                }
                             }
                             case 'eyelashes':
-                                return <g key={f.id}>{renderEyelashes(f.eye.cx, f.eye.rx, f.eye.ry)}</g>;
+                                return ['realistic', 'blocky', 'circle'].includes(eyeStyle) ? <g key={f.id}>{renderEyelashes(f.eye.cx, f.eye.rx, f.eye.ry)}</g> : null;
                             case 'eyebrow':
                                 return (
                                     <g key={f.id} transform={`translate(${f.x}, ${f.y}) rotate(${f.angle}) scale(${f.scale})`}>
